@@ -1,0 +1,112 @@
+# Raspberry Smart Home
+
+An engineering-grade smart-home monitoring platform for a Master's project:
+
+> **Дослідження та реалізація апаратно-програмної системи розумного дому з функцією моніторингу руху на базі Raspberry Pi та ESP32**
+
+The current system records environmental telemetry from an ESP32 and BMP280 sensor, stores it in PostgreSQL, and presents current values and history through a FastAPI dashboard.
+
+## Architecture
+
+```text
+BMP280 → ESP32 → MQTT (Mosquitto) → Python collector → PostgreSQL → FastAPI → Dashboard
+```
+
+## Current capabilities
+
+- ESP32 temperature and pressure telemetry over MQTT
+- PostgreSQL storage for sensor history
+- FastAPI REST endpoints and interactive local dashboard
+- Temperature history chart with 1, 6, and 24-hour ranges
+- Online/offline indicator based on reading freshness
+- systemd-managed Mosquitto, PostgreSQL, collector, and API services
+
+## Hardware
+
+- Raspberry Pi 5 (8 GB)
+- ESP32-WROOM
+- BMP280 temperature and pressure sensor
+- Official Raspberry Pi PSU
+- Pironman 5 Mini case
+- Kingston Canvas Go! Plus 64 GB microSD card
+
+Planned hardware includes an HC-SR501 PIR sensor and an NVMe SSD.
+
+## Project layout
+
+```text
+.
+├── api.py                 # FastAPI application and REST endpoints
+├── mqtt_collector.py      # MQTT-to-PostgreSQL collector
+├── static/                # Dashboard HTML, CSS, and JavaScript
+├── .env.example           # Configuration template; safe to commit
+└── .gitignore
+```
+
+## MQTT topics
+
+| Topic | Value |
+| --- | --- |
+| `home/climate/room1/temperature` | Temperature in °C |
+| `home/climate/room1/pressure` | Atmospheric pressure in hPa |
+
+The ESP32 normally publishes telemetry about every five seconds.
+
+## Configuration
+
+The running system reads its configuration from `.env` through systemd. Create it from the committed template:
+
+```bash
+cd ~/smarthome
+cp .env.example .env
+chmod 600 .env
+```
+
+Set the PostgreSQL and MQTT values for the deployment. Do not commit `.env`; it contains credentials and is ignored by Git.
+
+## API
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /` | Dashboard |
+| `GET /docs` | FastAPI OpenAPI documentation |
+| `GET /api/sensors/latest` | Most recent sensor reading |
+| `GET /api/sensors/history?hours=1` | Sensor history for 1, 6, or 24 hours |
+
+Example latest-reading response:
+
+```json
+{
+  "id": 123,
+  "device_id": "esp32-room1",
+  "sensor_type": "BMP280",
+  "temperature": 24.63,
+  "pressure": 976.53,
+  "humidity": null,
+  "recorded_at": "2026-09-05T00:42:15+03:00"
+}
+```
+
+## Operations
+
+The production services are managed by systemd:
+
+```bash
+sudo systemctl status mosquitto postgresql smarthome-collector smarthome-api
+sudo systemctl restart smarthome-collector smarthome-api
+```
+
+Open the dashboard at `http://<raspberry-pi-ip>:8000/`.
+
+## Roadmap
+
+1. Restore and monitor ESP32 telemetry freshness.
+2. Integrate the HC-SR501 PIR sensor.
+3. Add a `motion_events` table and motion dashboard.
+4. Send Telegram notifications for motion events.
+5. Research Wi-Fi CSI motion detection.
+6. Add Tailscale remote access, backups, and storage monitoring.
+
+## Security
+
+Keep `.env`, SSH private keys, database dumps, and virtual environments out of Git. Use MQTT authentication and topic ACLs before exposing the system beyond the trusted local network.
