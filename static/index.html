@@ -1,234 +1,1275 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Smart Home — Raspberry Pi Monitoring System</title>
-  <link rel="stylesheet" href="/static/style.css">
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Smart Home — Raspberry Pi Monitoring System</title>
+<style>
+    /* ==========================================================================
+       Semantic Variables & Design Tokens (Dark Developer / Grafana Theme)
+       ========================================================================== */
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-hover: #1c2128;
+      --border: #30363d;
+      --text: #f0f6fc;
+      --text-secondary: #8b949e;
+      --green: #3fb950;
+      --blue: #58a6ff;
+      --orange: #d29922;
+      --red: #f85149;
+      --surface-muted: #0d1117;
+      --selected: #21262d;
+      --chart-grid: #21262d;
+      --chart-text: #8b949e;
+      --chart-fill: rgba(210, 153, 34, .22);
+      --chart-fill-end: rgba(210, 153, 34, 0);
+      --chart-line: #d29922;
+      --chart-point-stroke: #0d1117;
+
+      /* Additional telemetry UI nuances */
+      --card-radius: 6px;
+      --badge-radius: 4px;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    :root[data-theme="light"] {
+      --bg: #f6f8fa;
+      --surface: #ffffff;
+      --surface-hover: #f3f4f6;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --text-secondary: #57606a;
+      --green: #1a7f37;
+      --blue: #0969da;
+      --orange: #9a6700;
+      --red: #cf222e;
+      --surface-muted: #f6f8fa;
+      --selected: #eaeef2;
+      --chart-grid: #d8dee4;
+      --chart-text: #57606a;
+      --chart-fill: rgba(154, 103, 0, .18);
+      --chart-fill-end: rgba(154, 103, 0, 0);
+      --chart-line: #9a6700;
+      --chart-point-stroke: #ffffff;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Common Typography / Utilities */
+    .mono { font-family: var(--font-mono); }
+    .text-secondary { color: var(--text-secondary); }
+    .text-green { color: var(--green); }
+    .text-blue { color: var(--blue); }
+    .text-orange { color: var(--orange); }
+    .text-red { color: var(--red); }
+    .text-main { color: var(--text); }
+    .divider { color: var(--border); margin: 0 4px; }
+
+    /* Icons (Local SVGs inline or CSS geometric shapes) */
+    .icon {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      vertical-align: text-bottom;
+      fill: currentColor;
+    }
+
+    /* Pulse glowing indicator */
+    .glow-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      position: relative;
+    }
+    .glow-dot.pulse::after {
+      content: "";
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--green);
+      opacity: 0.4;
+      animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+    @keyframes ping {
+      75%, 100% {
+        transform: scale(2);
+        opacity: 0;
+      }
+    }
+
+    /* 1. Header */
+    header {
+      background-color: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 0 1.25rem;
+    }
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      background: rgba(88, 166, 255, 0.1);
+      border: 1px solid rgba(88, 166, 255, 0.25);
+      border-radius: var(--badge-radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--blue);
+    }
+    .brand-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+    }
+    .host-badge {
+      background-color: var(--surface-muted);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: var(--badge-radius);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .host-badge strong {
+      color: var(--text);
+    }
+    .status-pill {
+      background-color: rgba(63, 185, 80, 0.12);
+      border: 1px solid rgba(63, 185, 80, 0.35);
+      color: var(--green);
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: var(--badge-radius);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      letter-spacing: 0.04em;
+    }
+    .theme-toggle {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 8px;
+      border-radius: var(--badge-radius);
+      cursor: pointer;
+      font: inherit;
+    }
+    .theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+
+    /* Main Container */
+    main {
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1rem 1.25rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* 2. Device Overview Strip */
+    .overview-strip {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .strip-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .strip-tag {
+      font-weight: 600;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .strip-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .poll-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 3px 8px;
+      border-radius: var(--badge-radius);
+      cursor: pointer;
+      font-size: 11px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+    .poll-btn:hover {
+      background-color: var(--surface-hover);
+      color: var(--text);
+      border-color: #8b949e;
+    }
+
+    /* 3. Primary Telemetry Cards Grid */
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+    @media (max-width: 900px) {
+      .telemetry-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .telemetry-card {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      transition: border-color 0.2s ease, background-color 0.2s ease;
+    }
+    .telemetry-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+    }
+    .card-temp::before { background-color: var(--orange); }
+    .card-pressure::before { background-color: var(--blue); }
+    .card-motion::before { background-color: var(--green); }
+    .card-motion.motion-alert::before { background-color: var(--orange); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .card-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .chip {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: var(--badge-radius);
+      border: 1px solid var(--border);
+      background: var(--surface-muted);
+      color: var(--text-secondary);
+    }
+    .chip-blue {
+      border-color: rgba(88, 166, 255, 0.4);
+      background: rgba(88, 166, 255, 0.1);
+      color: var(--blue);
+    }
+    .chip-orange {
+      border-color: rgba(210, 153, 34, 0.4);
+      background: rgba(210, 153, 34, 0.1);
+      color: var(--orange);
+    }
+    .chip-green {
+      border-color: rgba(63, 185, 80, 0.4);
+      background: rgba(63, 185, 80, 0.1);
+      color: var(--green);
+    }
+
+    .metric-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .metric-value {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .metric-unit {
+      font-size: 16px;
+      font-weight: 400;
+      color: var(--text-secondary);
+    }
+    .delta-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: var(--badge-radius);
+      background: rgba(63, 185, 80, 0.1);
+      border: 1px solid rgba(63, 185, 80, 0.25);
+      color: var(--green);
+      font-weight: 500;
+    }
+
+    /* Subtle Sparkline SVG in Card */
+    .sparkline-box {
+      width: 100%;
+      height: 32px;
+      margin-top: 4px;
+    }
+    .sparkline-box svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Gauge bar */
+    .gauge-wrapper {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .gauge-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .gauge-track {
+      width: 100%;
+      height: 5px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .gauge-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #1f6feb 0%, var(--blue) 100%);
+      transition: width 0.3s ease;
+    }
+
+    /* Sub-telemetry Footer */
+    .card-footer-meta {
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .card-footer-meta strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    /* Motion status specific */
+    .sensor-subgrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 11px;
+    }
+    .subgrid-item {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: var(--badge-radius);
+      padding: 6px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    /* 4. Bottom Analytics Section (History + Motion Log) */
+    .analytics-section {
+      display: grid;
+      grid-template-columns: 8fr 4fr;
+      gap: 1rem;
+    }
+    @media (max-width: 1024px) {
+      .analytics-section {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .analytics-panel {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .panel-title-group h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .panel-subtitle {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    /* Segmented filter buttons */
+    .segmented-control {
+      display: inline-flex;
+      background-color: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: var(--badge-radius);
+      padding: 2px;
+    }
+    .segmented-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .segmented-btn:hover {
+      color: var(--text);
+    }
+    .segmented-btn.active {
+      background-color: var(--selected);
+      color: var(--orange);
+      font-weight: 600;
+      border: 1px solid rgba(210, 153, 34, 0.35);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
+
+    /* Canvas Graph Container */
+    .chart-container {
+      position: relative;
+      margin-top: 14px;
+      width: 100%;
+      height: 250px;
+    }
+    #tempCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .chart-tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: #1c2128;
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: var(--badge-radius);
+      font-size: 11px;
+      color: var(--text);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      display: none;
+      z-index: 10;
+    }
+    .chart-tooltip .val {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--orange);
+      margin-top: 2px;
+    }
+
+    /* Motion Events Table */
+    .table-container {
+      margin-top: 10px;
+      width: 100%;
+    }
+    .event-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .event-table th {
+      text-align: left;
+      font-weight: 500;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .event-table th.text-right,
+    .event-table td.text-right {
+      text-align: right;
+    }
+    .event-table td {
+      padding: 8px 4px;
+      border-bottom: 1px solid rgba(48, 54, 61, 0.45);
+      vertical-align: middle;
+    }
+    .event-table tr:hover td {
+      background-color: var(--surface-hover);
+    }
+
+    .badge-event-active {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: var(--badge-radius);
+      background-color: rgba(210, 153, 34, 0.15);
+      border: 1px solid rgba(210, 153, 34, 0.35);
+      color: var(--orange);
+      font-weight: 600;
+    }
+    .badge-event-clear {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: var(--badge-radius);
+      background-color: rgba(63, 185, 80, 0.1);
+      border: 1px solid rgba(63, 185, 80, 0.25);
+      color: var(--green);
+      font-weight: 500;
+    }
+
+    /* 5. Footer */
+    footer {
+      background-color: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 10px 1.25rem;
+      margin-top: auto;
+      font-size: 11px;
+    }
+    .footer-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--text-secondary);
+    }
+    .footer-stack {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .footer-stack strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+  </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="shell topbar-inner">
-      <div class="brand">
-        <div class="board-icon" aria-hidden="true">▦</div>
-        <div class="brand-copy">
-          <h1>Smart Home</h1>
-          <span>Raspberry Pi Monitoring System</span>
-        </div>
-      </div>
-
-      <div class="system-state">
-        <div class="host-chip">
-          <span id="host-name">Raspberry Pi 5</span>
-          <span class="separator">|</span>
-          <span>8GB</span>
-        </div>
-        <div id="system-status" class="status-badge offline">
-          <span class="status-dot"></span>
-          <span id="system-status-text">OFFLINE</span>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <main class="shell dashboard">
-    <section class="device-strip">
-      <div class="device-meta">
-        <strong>ROOM 1 <span>· ESP32 ROOM SENSOR</span></strong>
-        <span class="separator">|</span>
-        <span>Device: <b>esp32-room1</b></span>
-        <span class="separator">|</span>
-        <span>Connection: <b>MQTT</b></span>
-        <span class="separator">|</span>
-        <span>Last telemetry: <b id="node-last-sync">—</b></span>
-      </div>
-
-      <div class="device-actions">
-        <span id="device-status" class="inline-status offline">
-          <span class="status-dot"></span>
-          <span id="device-status-text">Status: OFFLINE</span>
+<!-- 1. DASHBOARD HEADER -->
+<header>
+<div class="header-inner">
+<!-- Title & Subtitle with Microcontroller Icon -->
+<div class="brand-section">
+<div class="brand-icon">
+<svg class="icon" viewbox="0 0 24 24">
+<path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+<path d="M7 6V3m5 3V3m5 3V3M7 18v3m5-3v3m5-3v3M4 9H1m3 6H1m19-6h3m-3 6h3" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path>
+<circle cx="10" cy="11" fill="currentColor" r="1.5"></circle>
+<circle cx="14" cy="11" fill="currentColor" r="1.5"></circle>
+</svg>
+</div>
+<div>
+<h1 class="brand-title">
+            Smart Home
+            <span class="brand-subtitle mono">Raspberry Pi Monitoring System</span>
+</h1>
+</div>
+</div>
+<!-- Right Host IP & Technical System Status Indicator -->
+<div class="header-meta mono">
+<div class="host-badge">
+<strong>Raspberry Pi</strong>
+</div>
+<button class="theme-toggle mono" id="theme-toggle" type="button" aria-label="Switch to light theme">☀ Light</button>
+<div class="status-pill">
+<span class="glow-dot pulse"></span>
+<span>OFFLINE</span>
+</div>
+</div>
+</div>
+</header>
+<!-- MAIN VIEWPORT -->
+<main>
+<!-- 2. DEVICE OVERVIEW STRIP -->
+<section class="overview-strip">
+<div class="strip-meta mono">
+<span class="strip-tag">
+<svg class="icon text-blue" style="width:15px; height:15px;" viewbox="0 0 24 24">
+<path d="M12 2a10 10 0 0 0-7.07 17.07l1.41-1.41A8 8 0 1 1 12 20v2a10 10 0 0 0 0-20zm0 5a5 5 0 0 0-3.54 8.54l1.41-1.41A3 3 0 1 1 12 15v2a5 5 0 0 0 0-10zm0 4a1 1 0 1 0 1 1 1 1 0 0 0-1-1z" fill="currentColor"></path>
+</svg>
+          ROOM 1 <span class="text-secondary" style="font-weight: normal;">· ESP32 ROOM SENSOR</span>
+</span>
+<span class="divider">|</span>
+<span class="text-secondary">Device: <strong class="text-main" id="device-id">—</strong></span>
+<span class="divider">|</span>
+<span class="text-secondary">Last telemetry: <strong class="text-main" id="node-last-sync">—</strong></span>
+</div>
+<div class="strip-actions mono">
+<span class="text-green" style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 11px;">
+<span style="width:6px; height:6px; background:var(--green); border-radius:50%; display:inline-block;"></span>
+          Status: OFFLINE
         </span>
-        <button id="poll-btn" class="icon-button" type="button" title="Refresh telemetry" aria-label="Refresh telemetry">↻</button>
-      </div>
-    </section>
 
-    <section class="metrics-grid">
-      <article class="metric-card temperature-card">
-        <div>
-          <div class="card-header">
-            <span class="metric-label">BMP280 / TEMPERATURE</span>
-            <span class="tiny-chip telemetry-chip">I2C: 0x76</span>
-          </div>
+</div>
+</section>
+<!-- 3. PRIMARY TELEMETRY (3 Engineering Cards) -->
+<section class="telemetry-grid">
+<!-- CARD 1: TEMPERATURE (BMP280) with Warm Orange Accent #d29922 -->
+<div class="telemetry-card card-temp">
+<div>
+<div class="card-header">
+<span class="card-label mono">
+<svg class="icon text-orange" viewbox="0 0 24 24">
+<path d="M15 13V5a3 3 0 0 0-6 0v8a5 5 0 1 0 6 0zm-3-10a1 1 0 0 1 1 1v5h-2V4a1 1 0 0 1 1-1z"></path>
+</svg>
+              BMP280 / TEMPERATURE
+            </span>
+<span class="chip chip-orange mono">I2C: 0x76</span>
+</div>
+<div class="metric-row">
+<div class="metric-value mono">
+<span id="temp-display-val" style="color: var(--text);">—</span>
+<span class="metric-unit">°C</span>
+</div>
+<span class="delta-badge mono" id="temp-trend">—</span>
+</div>
+</div>
+<div class="card-footer-meta mono">
+<span>Min: <strong id="temp-min">—</strong></span>
+<span class="divider">·</span>
+<span>Max: <strong id="temp-max">—</strong></span>
+<span class="divider">·</span>
+<span>Avg: <strong id="temp-avg">—</strong></span>
+</div>
+</div>
+<!-- CARD 2: PRESSURE (BMP280) with Cyan/Blue Accent #58a6ff -->
+<div class="telemetry-card card-pressure">
+<div>
+<div class="card-header">
+<span class="card-label mono">
+<svg class="icon text-blue" viewbox="0 0 24 24">
+<path d="M19 12h-2V7.41L6.41 18 5 16.59 15.59 6H11V4h8v8z" fill="currentColor"></path>
+</svg>
+              BMP280 / PRESSURE
+            </span>
+<span class="chip chip-blue mono">I2C: 0x76</span>
+</div>
+<div class="metric-row">
+<div class="metric-value mono">
+<span id="pressure-display-val">—</span>
+<span class="metric-unit">hPa</span>
+</div>
+<span class="delta-badge mono" id="pressure-trend">—</span>
+</div>
+<!-- Barometric Level Gauge -->
+<div class="card-footer-meta mono"><span>Live reading from the sensor API</span></div>
+</div>
+<!-- CARD 3: MOTION STATUS CARD (planned integration) -->
+<div class="telemetry-card card-motion" id="motion-card">
+<div>
+<div class="card-header">
+<span class="card-label mono">
+<svg class="icon text-secondary" id="motion-icon" viewbox="0 0 24 24">
+<path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7z"></path>
+</svg>
+              MOTION / ROOM 1
+            </span>
+</div>
+<div class="metric-row" style="margin-top: 4px;">
+<div class="metric-value mono" style="font-size: 22px;">
+<span id="motion-status-title">NOT CONFIGURED</span>
+</div>
+<span class="chip mono" id="motion-status-pill">PENDING</span>
+</div>
+<!-- Secondary Sub-indicators -->
+<div class="sensor-subgrid mono">
+<div class="subgrid-item">
+<span class="text-secondary" style="font-size: 10px;">PIR sensor</span>
+<span class="text-secondary" style="font-weight: 600;">NOT CONFIGURED</span>
+</div>
+<div class="subgrid-item">
+<span class="text-secondary" style="font-size: 10px;">WI-FI CSI</span>
+<span class="text-secondary" style="font-weight: 500;">NOT CONFIGURED</span>
+</div>
+</div>
+</div>
+<div class="card-footer-meta mono">
+<span>Motion telemetry will appear after PIR integration.</span>
+</div>
+</div>
+</section>
+<!-- 4. TEMPERATURE HISTORY & MOTION EVENT HISTORY -->
+<section class="analytics-section">
+<!-- LEFT: TEMPERATURE HISTORY CANVAS GRAPH -->
+<div class="analytics-panel">
+<div class="panel-header">
+<div class="panel-title-group">
+<div style="display:flex; align-items:center; gap:8px;">
+<h2>Temperature History</h2>
+<span class="chip mono" style="font-size: 10px; border-color: rgba(210, 153, 34, 0.3); color: var(--orange);">BMP280 · esp32-room1</span>
+</div>
+<p class="panel-subtitle mono">Continuous telemetry streamed via Mosquitto MQTT</p>
+</div>
+<!-- Segmented Filter Controls -->
+<div class="segmented-control">
+<button class="segmented-btn active" onclick="setChartRange(this, '1H')">1H</button>
+<button class="segmented-btn" onclick="setChartRange(this, '6H')">6H</button>
+<button class="segmented-btn" onclick="setChartRange(this, '24H')">24H</button>
+</div>
+</div>
+<!-- Canvas Area -->
+<div class="chart-container" id="chartWrapper">
+<canvas id="tempCanvas"></canvas>
+<div class="chart-tooltip mono" id="tooltip">
+<div class="text-secondary" style="font-size: 10px;">Timestamp: <span id="tt-time" style="color:var(--text);">—</span></div>
+<div class="val" id="tt-val">—</div>
+</div>
+</div>
+</div>
+<!-- RIGHT: MOTION EVENTS COMPACT TABLE -->
+<div class="analytics-panel">
+<div class="panel-header">
+<div class="panel-title-group">
+<div style="display:flex; align-items:center; gap:6px;">
+<svg class="icon text-secondary" style="width:15px; height:15px;" viewbox="0 0 24 24">
+<path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.896 8.896 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z" fill="currentColor"></path>
+</svg>
+<h2>Motion Events</h2>
+</div>
+<p class="panel-subtitle mono">Hardware GPIO Event Log</p>
+</div>
+<span class="chip mono text-secondary" style="font-size:10px;">Not configured</span>
+</div>
+<!-- Sensor readiness chips -->
+<div class="mono" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; font-size:10px;">
+<span class="chip chip-green">[PIR: NOT CONFIGURED]</span>
+<span class="chip">[Wi-Fi CSI: STANDBY]</span>
+<span class="chip" style="border-style:dashed;">[FUSED: PENDING]</span>
+</div>
+<!-- Events List -->
+<div class="table-container">
+<table class="event-table mono">
+<thead>
+<tr>
+<th style="width: 32%;">Timestamp</th>
+<th style="width: 25%;">Source</th>
+<th class="text-right" style="width: 43%;">State</th>
+</tr>
+</thead>
+<tbody id="events-tbody">
+<tr><td colspan="3" class="text-secondary" style="padding:14px 4px;">No motion sensor configured</td></tr>
+</tbody>
+</table>
+</div>
+<div class="card-footer-meta mono" style="margin-top:auto; padding-top:12px;">
+<span class="text-secondary">Awaiting PIR integration</span>
+</div>
+</div>
+</section>
+</main>
+<!-- 5. SYSTEM / EDGE INFORMATION FOOTER -->
+<footer>
+<div class="footer-inner mono">
+<div class="footer-stack">
+<strong>Smart Home Monitoring</strong>
+<span class="divider">•</span>
+<span>Live sensor data via FastAPI</span>
+</div>
+<div style="display:flex; align-items:center; gap:6px;">
+<svg class="icon text-secondary" style="width:13px; height:13px;" viewbox="0 0 24 24">
+<path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" fill="currentColor"></path>
+</svg>
+<span id="local-clock">Local time: —</span>
+</div>
+</div>
+</footer>
+<!-- Precision Standalone Chart & Interaction Logic -->
+<script>
+    const canvas = document.getElementById('tempCanvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+    const ttTime = document.getElementById('tt-time');
+    const ttVal = document.getElementById('tt-val');
 
-          <div class="metric-row">
-            <div>
-              <span id="card-temp-value" class="metric-value">—</span>
-              <span class="metric-unit">°C</span>
-            </div>
-            <span id="temp-trend" class="trend-chip neutral">Waiting for data</span>
-          </div>
+    const tempDisp = document.getElementById('temp-display-val');
+    const pressureDisp = document.getElementById('pressure-display-val');
+    const lastSync = document.getElementById('node-last-sync');
+    const deviceId = document.getElementById('device-id');
+    const themeToggle = document.getElementById('theme-toggle');
+    const root = document.documentElement;
 
-          <canvas id="temp-sparkline" class="sparkline" height="42"></canvas>
-        </div>
+    let activeHours = 1;
+    let historyData = [];
+    let hoveredPoint = null;
 
-        <div class="card-footer triple">
-          <span>Min: <b id="temp-min">—</b></span>
-          <span>Max: <b id="temp-max">—</b></span>
-          <span>Avg: <b id="temp-avg">—</b></span>
-        </div>
-      </article>
+    const ONLINE_TIMEOUT_MS = 15000;
+    const LATEST_REFRESH_MS = 5000;
+    const HISTORY_REFRESH_MS = 10000;
 
-      <article class="metric-card pressure-card">
-        <div>
-          <div class="card-header">
-            <span class="metric-label">BMP280 / PRESSURE</span>
-            <span class="tiny-chip pressure-chip">LIVE</span>
-          </div>
+    function setTheme(theme) {
+      root.dataset.theme = theme;
+      localStorage.setItem('theme', theme);
+      const isLight = theme === 'light';
+      themeToggle.textContent = isLight ? '◐ Dark' : '☀ Light';
+      themeToggle.setAttribute('aria-label',
+        `Switch to ${isLight ? 'dark' : 'light'} theme`);
+      renderChart();
+    }
 
-          <div class="metric-row">
-            <div>
-              <span id="card-pressure-value" class="metric-value">—</span>
-              <span class="metric-unit">hPa</span>
-            </div>
-            <span id="pressure-trend" class="trend-chip neutral">Waiting for data</span>
-          </div>
+    function initializeTheme() {
+      const saved = localStorage.getItem('theme');
+      setTheme(saved || (window.matchMedia('(prefers-color-scheme: light)').matches
+        ? 'light' : 'dark'));
+    }
 
-          <div class="pressure-bar-wrap">
-            <div class="pressure-meta">
-              <span>Current sensor reading</span>
-              <span id="pressure-age">—</span>
-            </div>
-            <div class="pressure-bar">
-              <div id="pressure-bar-fill" class="pressure-bar-fill"></div>
-            </div>
-          </div>
-        </div>
+    function formatTime(value) {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
 
-        <div class="card-footer">
-          <span>Source: <b>BMP280</b></span>
-          <span>Transport: <b>MQTT</b></span>
-        </div>
-      </article>
+    function setOnlineState(online) {
+      const headerPill = document.querySelector('.status-pill');
+      const headerText = headerPill?.querySelector('span:last-child');
+      const headerDot = headerPill?.querySelector('.glow-dot');
 
-      <article id="motion-card" class="metric-card motion-card">
-        <div>
-          <div class="card-header">
-            <span class="metric-label">MOTION / ROOM 1</span>
-            <span id="motion-state-badge" class="tiny-chip neutral-chip">NOT CONFIGURED</span>
-          </div>
+      const overviewStatus = document.querySelector('.strip-actions > span');
 
-          <div class="metric-row">
-            <span id="motion-state-text" class="motion-value">NO MOTION DATA</span>
-          </div>
+      if (headerText) headerText.textContent = online ? 'ONLINE' : 'OFFLINE';
 
-          <div class="motion-sources">
-            <div class="motion-source">
-              <span class="source-title">PIR GPIO 27</span>
-              <span id="pir-status" class="source-state muted">NOT CONFIGURED</span>
-            </div>
-            <div class="motion-source">
-              <span class="source-title">WI-FI CSI</span>
-              <span class="source-state muted">NOT CONFIGURED</span>
-            </div>
-          </div>
-        </div>
+      if (headerPill) {
+        headerPill.style.color = online ? 'var(--green)' : 'var(--red)';
+        headerPill.style.backgroundColor =
+          online ? 'rgba(63,185,80,.12)' : 'rgba(248,81,73,.12)';
+        headerPill.style.borderColor =
+          online ? 'rgba(63,185,80,.35)' : 'rgba(248,81,73,.35)';
+      }
 
-        <div class="card-footer">
-          <span>Last detected: <b id="motion-last-event">—</b></span>
-        </div>
-      </article>
-    </section>
+      if (headerDot) {
+        headerDot.style.backgroundColor = online ? 'var(--green)' : 'var(--red)';
+        headerDot.style.boxShadow =
+          online ? '0 0 8px var(--green)' : '0 0 8px var(--red)';
+      }
 
-    <section class="content-grid">
-      <article class="panel history-panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title-row">
-              <h2>Temperature History</h2>
-              <span class="tiny-chip telemetry-chip">BMP280 · esp32-room1</span>
-            </div>
-            <p>Historical telemetry stored in PostgreSQL</p>
-          </div>
+      if (overviewStatus) {
+        overviewStatus.className = online ? 'text-green' : 'text-red';
+        overviewStatus.style.display = 'inline-flex';
+        overviewStatus.style.alignItems = 'center';
+        overviewStatus.style.gap = '5px';
+        overviewStatus.style.fontWeight = '600';
+        overviewStatus.style.fontSize = '11px';
+        overviewStatus.innerHTML =
+          `<span style="width:6px;height:6px;background:${online ? 'var(--green)' : 'var(--red)'};border-radius:50%;display:inline-block;"></span>
+           Status: ${online ? 'ONLINE' : 'OFFLINE'}`;
+      }
+    }
 
-          <div class="range-switch" role="group" aria-label="Chart range">
-            <button class="range-button active" data-hours="1" type="button">1H</button>
-            <button class="range-button" data-hours="6" type="button">6H</button>
-            <button class="range-button" data-hours="24" type="button">24H</button>
-          </div>
-        </div>
+    async function loadLatest() {
+      try {
+        const response = await fetch('/api/sensors/latest', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        <div class="chart-wrap">
-          <canvas id="temperature-chart"></canvas>
-          <div id="chart-tooltip" class="chart-tooltip" hidden></div>
-        </div>
+        const data = await response.json();
 
-        <div class="chart-footer">
-          <div>
-            <span class="legend-dot telemetry-dot"></span>
-            <span>Update interval: ~5 s</span>
-          </div>
-          <div>
-            <span>Source: MQTT</span>
-            <span class="separator">·</span>
-            <span>Storage: PostgreSQL</span>
-          </div>
-        </div>
-      </article>
+        const temperature = Number(data.temperature);
+        const pressure = Number(data.pressure);
+        tempDisp.textContent = Number.isFinite(temperature) ? temperature.toFixed(2) : '—';
+        pressureDisp.textContent = Number.isFinite(pressure) ? pressure.toFixed(2) : '—';
+        deviceId.textContent = data.device_id || '—';
 
-      <article class="panel motion-panel">
-        <div class="panel-header compact">
-          <div>
-            <h2>Motion Events</h2>
-            <p>Event history will appear after PIR integration</p>
-          </div>
-          <span class="tiny-chip neutral-chip">GPIO LOG</span>
-        </div>
+        if (data.recorded_at) {
+          const recorded = new Date(data.recorded_at);
+          lastSync.textContent = formatTime(recorded);
+          setOnlineState(Date.now() - recorded.getTime() < ONLINE_TIMEOUT_MS);
+        } else {
+          lastSync.textContent = '—';
+          setOnlineState(false);
+        }
+      } catch (error) {
+        console.error('Latest telemetry request failed:', error);
+        setOnlineState(false);
+      }
+    }
 
-        <div class="motion-tags">
-          <span id="pir-tag" class="tiny-chip neutral-chip">[PIR: pending]</span>
-          <span class="tiny-chip neutral-chip">[Wi-Fi CSI: pending]</span>
-          <span class="tiny-chip dashed-chip">[FUSED: pending]</span>
-        </div>
+    async function loadHistory() {
+      try {
+        const response = await fetch(
+          `/api/sensors/history?hours=${activeHours}`,
+          { cache: 'no-store' }
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        <div class="event-table">
-          <div class="event-head">
-            <span>Timestamp</span>
-            <span>Source</span>
-            <span>State</span>
-          </div>
-          <div id="motion-events-list" class="event-list">
-            <div class="empty-state">
-              Motion subsystem is not configured yet.
-            </div>
-          </div>
-        </div>
+        const payload = await response.json();
+        historyData = Array.isArray(payload) ? payload :
+                      Array.isArray(payload.data) ? payload.data :
+                      Array.isArray(payload.readings) ? payload.readings : [];
 
-        <div class="card-footer">
-          <span>Sensor: <b id="motion-health">Pending</b></span>
-          <span>Notifications: <b>Not configured</b></span>
-        </div>
-      </article>
-    </section>
-  </main>
+        historyData = historyData.filter(
+          row => Number.isFinite(Number(row.temperature)) &&
+                 Number.isFinite(new Date(row.recorded_at).getTime())
+        ).sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
 
-  <footer class="footer">
-    <div class="shell footer-inner">
-      <div>
-        <strong>Edge Stack:</strong>
-        <span>Raspberry Pi 5</span>
-        <span class="separator">·</span>
-        <span>ESP32</span>
-        <span class="separator">·</span>
-        <span>Mosquitto MQTT</span>
-        <span class="separator">·</span>
-        <span>PostgreSQL</span>
-        <span class="separator">·</span>
-        <span>FastAPI</span>
-      </div>
-      <div id="footer-clock">Local time: —</div>
-    </div>
-  </footer>
+        renderChart();
+        updateTemperatureStats();
+      } catch (error) {
+        console.error('History request failed:', error);
+        historyData = [];
+        resetHistoryStats();
+        renderChart();
+      }
+    }
 
-  <script src="/static/app.js"></script>
-</body>
-</html>
+    function resetHistoryStats() {
+      ['temp-min', 'temp-max', 'temp-avg', 'temp-trend', 'pressure-trend']
+        .forEach(id => { document.getElementById(id).textContent = '—'; });
+    }
+
+    function updateTemperatureStats() {
+      if (historyData.length === 0) {
+        resetHistoryStats();
+        return;
+      }
+
+      const values = historyData.map(x => Number(x.temperature));
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+
+      document.getElementById('temp-min').textContent = `${min.toFixed(2)}°C`;
+      document.getElementById('temp-max').textContent = `${max.toFixed(2)}°C`;
+      document.getElementById('temp-avg').textContent = `${avg.toFixed(2)}°C`;
+      const tempDelta = values[values.length - 1] - values[0];
+      document.getElementById('temp-trend').textContent =
+        `${tempDelta >= 0 ? '+' : ''}${tempDelta.toFixed(2)}°C/${activeHours}h`;
+
+      const pressures = historyData.map(row => Number(row.pressure)).filter(Number.isFinite);
+      if (pressures.length >= 2) {
+        const pressureDelta = pressures[pressures.length - 1] - pressures[0];
+        document.getElementById('pressure-trend').textContent =
+          `${pressureDelta >= 0 ? '+' : ''}${pressureDelta.toFixed(2)} hPa/${activeHours}h`;
+      }
+    }
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      renderChart();
+    }
+
+    function renderChart() {
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      ctx.clearRect(0, 0, width, height);
+
+      if (!historyData.length) {
+        ctx.fillStyle = getComputedStyle(root).getPropertyValue('--chart-text').trim();
+        ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('No telemetry data', width / 2, height / 2);
+        canvas._pts = [];
+        return;
+      }
+
+      const paddingLeft = 48;
+      const paddingRight = 20;
+      const paddingTop = 20;
+      const paddingBottom = 32;
+      const plotW = width - paddingLeft - paddingRight;
+      const plotH = height - paddingTop - paddingBottom;
+
+      const values = historyData.map(row => Number(row.temperature));
+      let minY = Math.min(...values);
+      let maxY = Math.max(...values);
+
+      if (minY === maxY) {
+        minY -= 1;
+        maxY += 1;
+      } else {
+        const margin = Math.max((maxY - minY) * 0.15, 0.5);
+        minY -= margin;
+        maxY += margin;
+      }
+
+      const colors = getComputedStyle(root);
+      const color = name => colors.getPropertyValue(name).trim();
+      ctx.strokeStyle = color('--chart-grid');
+      ctx.lineWidth = 1;
+      ctx.fillStyle = color('--chart-text');
+      ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      const gridSteps = 4;
+      for (let i = 0; i <= gridSteps; i++) {
+        const ratio = i / gridSteps;
+        const y = paddingTop + plotH * (1 - ratio);
+        const label = minY + (maxY - minY) * ratio;
+
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(paddingLeft, y);
+        ctx.lineTo(width - paddingRight, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillText(`${label.toFixed(1)}°C`, paddingLeft - 8, y);
+      }
+
+      const firstTime = new Date(historyData[0].recorded_at).getTime();
+      const lastTime = new Date(historyData[historyData.length - 1].recorded_at).getTime();
+      const timeSpan = Math.max(1, lastTime - firstTime);
+      const pts = historyData.map(row => {
+        const timestamp = new Date(row.recorded_at).getTime();
+        const x = timeSpan === 1
+          ? paddingLeft + plotW / 2
+          : paddingLeft + ((timestamp - firstTime) / timeSpan) * plotW;
+
+        const val = Number(row.temperature);
+        const normY = (val - minY) / (maxY - minY);
+        const y = paddingTop + plotH * (1 - normY);
+
+        return {
+          x,
+          y,
+          val,
+          time: row.recorded_at
+        };
+      });
+
+      const gradient = ctx.createLinearGradient(
+        0, paddingTop, 0, height - paddingBottom
+      );
+      gradient.addColorStop(0, color('--chart-fill'));
+      gradient.addColorStop(1, color('--chart-fill-end'));
+
+      if (pts.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x, pts[i].y);
+        }
+        ctx.lineTo(pts[pts.length - 1].x, height - paddingBottom);
+        ctx.lineTo(pts[0].x, height - paddingBottom);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x, pts[i].y);
+        }
+        ctx.strokeStyle = color('--chart-line');
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
+
+      const last = pts[pts.length - 1];
+      ctx.beginPath();
+      ctx.arc(last.x, last.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = color('--chart-line');
+      ctx.fill();
+      ctx.strokeStyle = color('--chart-point-stroke');
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = color('--chart-text');
+      ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+
+      const labelCount = Math.min(5, pts.length);
+      for (let n = 0; n < labelCount; n++) {
+        const idx = labelCount === 1
+          ? 0
+          : Math.round(n * (pts.length - 1) / (labelCount - 1));
+        const p = pts[idx];
+        ctx.fillText(formatTime(p.time).slice(0, 5), p.x, height - paddingBottom + 8);
+      }
+
+      if (hoveredPoint) {
+        ctx.beginPath();
+        ctx.arc(hoveredPoint.x, hoveredPoint.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = color('--chart-line');
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      canvas._pts = pts;
+    }
+
+    function setChartRange(btn, span) {
+      document.querySelectorAll('.segmented-btn')
+        .forEach(b => b.classList.remove('active'));
+
+      btn.classList.add('active');
+      activeHours = Number(span.replace('H', ''));
+      hoveredPoint = null;
+      tooltip.style.display = 'none';
+      loadHistory();
+    }
+
+    canvas.addEventListener('mousemove', event => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const pts = canvas._pts || [];
+
+      let nearest = null;
+      let minDistance = 24;
+
+      for (const p of pts) {
+        const distance = Math.abs(p.x - mouseX);
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearest = p;
+        }
+      }
+
+      if (!nearest) {
+        hoveredPoint = null;
+        tooltip.style.display = 'none';
+        renderChart();
+        return;
+      }
+
+      hoveredPoint = nearest;
+      renderChart();
+
+      tooltip.style.display = 'block';
+      tooltip.style.left =
+        Math.min(rect.width - 140, Math.max(10, nearest.x - 65)) + 'px';
+      tooltip.style.top = Math.max(10, nearest.y - 52) + 'px';
+
+      ttTime.textContent =
+        new Date(nearest.time).toLocaleString();
+      ttVal.textContent = `${nearest.val.toFixed(2)} °C`;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      hoveredPoint = null;
+      tooltip.style.display = 'none';
+      renderChart();
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initializeTheme();
+      themeToggle.addEventListener('click', () => {
+        setTheme(root.dataset.theme === 'light' ? 'dark' : 'light');
+      });
+      resizeCanvas();
+      loadLatest();
+      loadHistory();
+
+      const updateClock = () => {
+        document.getElementById('local-clock').textContent =
+          `Local time: ${new Date().toLocaleTimeString()}`;
+      };
+      updateClock();
+
+      setInterval(loadLatest, LATEST_REFRESH_MS);
+      setInterval(loadHistory, HISTORY_REFRESH_MS);
+      setInterval(updateClock, 1000);
+    });
+  </script>
+</body></html>
