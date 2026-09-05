@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Home — Raspberry Pi Monitoring System</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <div class="brand">
+        <div class="board-icon" aria-hidden="true">▦</div>
+        <div class="brand-copy">
+          <h1>Smart Home</h1>
+          <span>Raspberry Pi Monitoring System</span>
+        </div>
+      </div>
+
+      <div class="system-state">
+        <div class="host-chip">
+          <span id="host-name">Raspberry Pi 5</span>
+          <span class="separator">|</span>
+          <span>8GB</span>
+        </div>
+        <div id="system-status" class="status-badge offline">
+          <span class="status-dot"></span>
+          <span id="system-status-text">OFFLINE</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell dashboard">
+    <section class="device-strip">
+      <div class="device-meta">
+        <strong>ROOM 1 <span>· ESP32 ROOM SENSOR</span></strong>
+        <span class="separator">|</span>
+        <span>Device: <b>esp32-room1</b></span>
+        <span class="separator">|</span>
+        <span>Connection: <b>MQTT</b></span>
+        <span class="separator">|</span>
+        <span>Last telemetry: <b id="node-last-sync">—</b></span>
+      </div>
+
+      <div class="device-actions">
+        <span id="device-status" class="inline-status offline">
+          <span class="status-dot"></span>
+          <span id="device-status-text">Status: OFFLINE</span>
+        </span>
+        <button id="poll-btn" class="icon-button" type="button" title="Refresh telemetry" aria-label="Refresh telemetry">↻</button>
+      </div>
+    </section>
+
+    <section class="metrics-grid">
+      <article class="metric-card temperature-card">
+        <div>
+          <div class="card-header">
+            <span class="metric-label">BMP280 / TEMPERATURE</span>
+            <span class="tiny-chip telemetry-chip">I2C: 0x76</span>
+          </div>
+
+          <div class="metric-row">
+            <div>
+              <span id="card-temp-value" class="metric-value">—</span>
+              <span class="metric-unit">°C</span>
+            </div>
+            <span id="temp-trend" class="trend-chip neutral">Waiting for data</span>
+          </div>
+
+          <canvas id="temp-sparkline" class="sparkline" height="42"></canvas>
+        </div>
+
+        <div class="card-footer triple">
+          <span>Min: <b id="temp-min">—</b></span>
+          <span>Max: <b id="temp-max">—</b></span>
+          <span>Avg: <b id="temp-avg">—</b></span>
+        </div>
+      </article>
+
+      <article class="metric-card pressure-card">
+        <div>
+          <div class="card-header">
+            <span class="metric-label">BMP280 / PRESSURE</span>
+            <span class="tiny-chip pressure-chip">LIVE</span>
+          </div>
+
+          <div class="metric-row">
+            <div>
+              <span id="card-pressure-value" class="metric-value">—</span>
+              <span class="metric-unit">hPa</span>
+            </div>
+            <span id="pressure-trend" class="trend-chip neutral">Waiting for data</span>
+          </div>
+
+          <div class="pressure-bar-wrap">
+            <div class="pressure-meta">
+              <span>Current sensor reading</span>
+              <span id="pressure-age">—</span>
+            </div>
+            <div class="pressure-bar">
+              <div id="pressure-bar-fill" class="pressure-bar-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-footer">
+          <span>Source: <b>BMP280</b></span>
+          <span>Transport: <b>MQTT</b></span>
+        </div>
+      </article>
+
+      <article id="motion-card" class="metric-card motion-card">
+        <div>
+          <div class="card-header">
+            <span class="metric-label">MOTION / ROOM 1</span>
+            <span id="motion-state-badge" class="tiny-chip neutral-chip">NOT CONFIGURED</span>
+          </div>
+
+          <div class="metric-row">
+            <span id="motion-state-text" class="motion-value">NO MOTION DATA</span>
+          </div>
+
+          <div class="motion-sources">
+            <div class="motion-source">
+              <span class="source-title">PIR GPIO 27</span>
+              <span id="pir-status" class="source-state muted">NOT CONFIGURED</span>
+            </div>
+            <div class="motion-source">
+              <span class="source-title">WI-FI CSI</span>
+              <span class="source-state muted">NOT CONFIGURED</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-footer">
+          <span>Last detected: <b id="motion-last-event">—</b></span>
+        </div>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel history-panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title-row">
+              <h2>Temperature History</h2>
+              <span class="tiny-chip telemetry-chip">BMP280 · esp32-room1</span>
+            </div>
+            <p>Historical telemetry stored in PostgreSQL</p>
+          </div>
+
+          <div class="range-switch" role="group" aria-label="Chart range">
+            <button class="range-button active" data-hours="1" type="button">1H</button>
+            <button class="range-button" data-hours="6" type="button">6H</button>
+            <button class="range-button" data-hours="24" type="button">24H</button>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <canvas id="temperature-chart"></canvas>
+          <div id="chart-tooltip" class="chart-tooltip" hidden></div>
+        </div>
+
+        <div class="chart-footer">
+          <div>
+            <span class="legend-dot telemetry-dot"></span>
+            <span>Update interval: ~5 s</span>
+          </div>
+          <div>
+            <span>Source: MQTT</span>
+            <span class="separator">·</span>
+            <span>Storage: PostgreSQL</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel motion-panel">
+        <div class="panel-header compact">
+          <div>
+            <h2>Motion Events</h2>
+            <p>Event history will appear after PIR integration</p>
+          </div>
+          <span class="tiny-chip neutral-chip">GPIO LOG</span>
+        </div>
+
+        <div class="motion-tags">
+          <span id="pir-tag" class="tiny-chip neutral-chip">[PIR: pending]</span>
+          <span class="tiny-chip neutral-chip">[Wi-Fi CSI: pending]</span>
+          <span class="tiny-chip dashed-chip">[FUSED: pending]</span>
+        </div>
+
+        <div class="event-table">
+          <div class="event-head">
+            <span>Timestamp</span>
+            <span>Source</span>
+            <span>State</span>
+          </div>
+          <div id="motion-events-list" class="event-list">
+            <div class="empty-state">
+              Motion subsystem is not configured yet.
+            </div>
+          </div>
+        </div>
+
+        <div class="card-footer">
+          <span>Sensor: <b id="motion-health">Pending</b></span>
+          <span>Notifications: <b>Not configured</b></span>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <div>
+        <strong>Edge Stack:</strong>
+        <span>Raspberry Pi 5</span>
+        <span class="separator">·</span>
+        <span>ESP32</span>
+        <span class="separator">·</span>
+        <span>Mosquitto MQTT</span>
+        <span class="separator">·</span>
+        <span>PostgreSQL</span>
+        <span class="separator">·</span>
+        <span>FastAPI</span>
+      </div>
+      <div id="footer-clock">Local time: —</div>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
