@@ -1,0 +1,15 @@
+[Unit]
+Description=Wi-Fi RSSI Motion Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anton
+WorkingDirectory=/home/anton/smarthome
+ExecStart=/usr/bin/python3 -u /home/anton/smarthome/wifi_motion_monitor.py --interface wlan0 --interval 2 --threshold-db 6 --window-size 15 --cooldown 20
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
