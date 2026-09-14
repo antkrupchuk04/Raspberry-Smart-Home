@@ -14,12 +14,16 @@ BMP280 → ESP32 → MQTT (Mosquitto) → Python collector → PostgreSQL → Fa
 
 ## Current capabilities
 
-- ESP32 temperature and pressure telemetry over MQTT
+- ESP32 temperature, pressure and DHT11 humidity telemetry over MQTT
 - PostgreSQL storage for sensor history
 - FastAPI REST endpoints and interactive local dashboard
-- Temperature history chart with 1, 6, and 24-hour ranges
+- Temperature/humidity/pressure history chart with 1, 6, and 24-hour ranges, CSV export and fullscreen
+- Cached outdoor weather and local AI room analysis
+- Responsive monitoring console with reusable cards and dedicated future-module sections
 - Online/offline indicator based on reading freshness
 - systemd-managed Mosquitto, PostgreSQL, collector, and API services
+
+See [Dashboard architecture](DASHBOARD.md) for the grid layout, reusable components, responsive behavior, polling intervals and module extension guide. System Status displays the available API/ESP32/query state; host metrics and unimplemented modules remain clearly marked as pending integration.
 
 ## Hardware
 
