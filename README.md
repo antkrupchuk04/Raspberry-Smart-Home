@@ -110,3 +110,26 @@ Open the dashboard at `http://<raspberry-pi-ip>:8000/`.
 ## Security
 
 Keep `.env`, SSH private keys, database dumps, and virtual environments out of Git. Use MQTT authentication and topic ACLs before exposing the system beyond the trusted local network.
+
+## AI Room Analytics
+
+`GET /api/analytics/room` provides lightweight local environmental analysis. “AI” here means local statistical analysis and machine learning on the Raspberry Pi; it does not use a cloud service or generative AI model.
+
+- Comfort scoring uses configurable temperature and humidity ranges. Humidity is optional because BMP280 does not provide it.
+- An `IsolationForest` checks recent valid readings, temperature/pressure change rates, and humidity when enough humidity data exists. It needs at least 30 valid samples and retrains at most once every five minutes.
+- A linear regression calculates the recent temperature trend and a 30-minute forecast when its fit has sufficient quality.
+
+Install the required local dependencies:
+
+```bash
+source ~/smarthome/venv/bin/activate
+pip install -r requirements.txt
+```
+
+Example request:
+
+```bash
+curl http://127.0.0.1:8000/api/analytics/room
+```
+
+The endpoint reports `available: false` for a subsystem with insufficient fresh history rather than fabricating an analysis.

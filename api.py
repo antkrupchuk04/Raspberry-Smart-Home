@@ -1,4 +1,5 @@
 import os
+import logging
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -6,6 +7,11 @@ from fastapi.staticfiles import StaticFiles
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
+
+from room_analytics import analyze_room
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 app = FastAPI(
@@ -92,3 +98,16 @@ def get_history(
             readings = cur.fetchall()
 
     return readings
+
+
+@app.get("/api/analytics/room")
+def get_room_analytics():
+    """Return lightweight local room analytics without exposing database details."""
+    try:
+        return analyze_room(DB_CONFIG)
+    except psycopg2.Error:
+        LOGGER.exception("Room analytics database query failed")
+        raise HTTPException(status_code=503, detail="Room analytics is temporarily unavailable")
+    except Exception:
+        LOGGER.exception("Room analytics failed unexpectedly")
+        raise HTTPException(status_code=500, detail="Room analytics failed")

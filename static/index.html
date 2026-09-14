@@ -607,6 +607,38 @@
       font-weight: 500;
     }
 
+    /* Local AI room analysis */
+    .ai-analysis-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 16px;
+    }
+    .ai-analysis-grid {
+      display: grid;
+      grid-template-columns: minmax(150px, 0.7fr) minmax(0, 1.5fr) minmax(150px, 0.8fr);
+      gap: 16px;
+      margin-top: 14px;
+      align-items: start;
+    }
+    .ai-score {
+      font: 700 28px var(--font-mono);
+      color: var(--blue);
+    }
+    .ai-score small { font-size: 12px; color: var(--text-secondary); font-weight: 400; }
+    .ai-status { font: 600 13px var(--font-mono); text-transform: uppercase; color: var(--green); }
+    .ai-status.warning, .ai-status.poor { color: var(--orange); }
+    .ai-status.error { color: var(--red); }
+    .ai-messages { list-style: none; display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; }
+    .ai-messages li::before { content: "•"; color: var(--blue); margin-right: 7px; }
+    .ai-forecast { border-left: 1px solid var(--border); padding-left: 16px; }
+    .ai-forecast-value { font: 700 22px var(--font-mono); color: var(--orange); margin-top: 3px; }
+    .ai-detail { color: var(--text-secondary); font-size: 11px; margin-top: 4px; }
+    @media (max-width: 720px) {
+      .ai-analysis-grid { grid-template-columns: 1fr; }
+      .ai-forecast { border-left: 0; border-top: 1px solid var(--border); padding: 12px 0 0; }
+    }
+
     /* 5. Footer */
     footer {
       background-color: var(--surface);
@@ -849,6 +881,29 @@
 </div>
 </div>
 </section>
+<!-- 5. Local AI room analysis -->
+<section class="ai-analysis-panel" aria-live="polite">
+<div class="panel-header">
+<div class="panel-title-group">
+<h2>AI Room Analysis</h2>
+<p class="panel-subtitle mono">Local statistical analysis from sensor history</p>
+</div>
+<span class="chip mono" id="ai-anomaly">Collecting data</span>
+</div>
+<div class="ai-analysis-grid">
+<div>
+<div class="text-secondary mono" style="font-size:10px;">ENVIRONMENT</div>
+<div class="ai-status" id="ai-status">COLLECTING</div>
+<div class="ai-score" id="ai-score">— <small>/ 100</small></div>
+</div>
+<ul class="ai-messages" id="ai-messages"><li>Collecting data for AI analysis...</li></ul>
+<div class="ai-forecast">
+<div class="text-secondary mono" style="font-size:10px;">30 MIN FORECAST</div>
+<div class="ai-forecast-value" id="ai-forecast">—</div>
+<div class="ai-detail mono" id="ai-trend">Trend: collecting data</div>
+</div>
+</div>
+</section>
 </main>
 <!-- 5. SYSTEM / EDGE INFORMATION FOOTER -->
 <footer>
@@ -1003,6 +1058,45 @@
         historyData = [];
         resetHistoryStats();
         renderChart();
+      }
+    }
+
+    function setAnalyticsUnavailable(message, isError = false) {
+      const status = document.getElementById('ai-status');
+      status.textContent = isError ? 'UNAVAILABLE' : 'COLLECTING';
+      status.className = `ai-status${isError ? ' error' : ''}`;
+      document.getElementById('ai-score').innerHTML = '— <small>/ 100</small>';
+      document.getElementById('ai-messages').replaceChildren(Object.assign(document.createElement('li'), { textContent: message }));
+      document.getElementById('ai-forecast').textContent = '—';
+      document.getElementById('ai-trend').textContent = 'Trend: unavailable';
+      document.getElementById('ai-anomaly').textContent = isError ? 'API unavailable' : 'Insufficient history';
+    }
+
+    async function loadAnalytics() {
+      try {
+        const response = await fetch('/api/analytics/room', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const comfort = data.comfort || {};
+        const status = document.getElementById('ai-status');
+        status.textContent = (comfort.status || 'collecting').toUpperCase();
+        status.className = `ai-status ${comfort.status || ''}`;
+        document.getElementById('ai-score').innerHTML = `${Number.isFinite(Number(comfort.score)) ? comfort.score : '—'} <small>/ 100</small>`;
+        const messages = Array.isArray(comfort.messages) ? comfort.messages : ['Collecting data for AI analysis...'];
+        const messageList = document.getElementById('ai-messages');
+        messageList.replaceChildren(...messages.map(message => Object.assign(document.createElement('li'), { textContent: message })));
+
+        const anomaly = data.anomaly || {};
+        document.getElementById('ai-anomaly').textContent = !anomaly.available ? 'Insufficient history' : anomaly.anomaly ? 'Anomaly detected' : 'No anomalies';
+        const forecast = data.forecast || {};
+        document.getElementById('ai-forecast').textContent = forecast.available ? `${Number(forecast.predicted_temperature).toFixed(2)} °C` : '—';
+        const trend = data.temperature_trend || {};
+        document.getElementById('ai-trend').textContent = trend.available
+          ? `Trend: ${trend.direction} (${Number(trend.slope_c_per_hour).toFixed(2)} °C/h)`
+          : 'Trend: collecting data';
+      } catch (error) {
+        console.error('Room analytics request failed:', error);
+        setAnalyticsUnavailable('AI analysis is temporarily unavailable.', true);
       }
     }
 
@@ -1260,6 +1354,7 @@
       resizeCanvas();
       loadLatest();
       loadHistory();
+      loadAnalytics();
 
       const updateClock = () => {
         document.getElementById('local-clock').textContent =
@@ -1269,6 +1364,7 @@
 
       setInterval(loadLatest, LATEST_REFRESH_MS);
       setInterval(loadHistory, HISTORY_REFRESH_MS);
+      setInterval(loadAnalytics, 30000);
       setInterval(updateClock, 1000);
     });
   </script>
