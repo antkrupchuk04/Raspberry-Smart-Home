@@ -9,6 +9,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from room_analytics import analyze_room
+from weather_service import WeatherUnavailable, get_current_weather
 
 
 LOGGER = logging.getLogger(__name__)
@@ -111,3 +112,11 @@ def get_room_analytics():
     except Exception:
         LOGGER.exception("Room analytics failed unexpectedly")
         raise HTTPException(status_code=500, detail="Room analytics failed")
+
+
+@app.get("/api/weather/current")
+async def get_weather_current():
+    try:
+        return await get_current_weather()
+    except WeatherUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error))

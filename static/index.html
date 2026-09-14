@@ -309,6 +309,7 @@
     .card-temp::before { background-color: var(--orange); }
     .card-pressure::before { background-color: var(--blue); }
     .card-humidity::before { background-color: var(--green); }
+    .card-weather::before { background-color: var(--blue); }
     .card-motion::before { background-color: var(--green); }
     .card-motion.motion-alert::before { background-color: var(--orange); }
 
@@ -436,6 +437,11 @@
       color: var(--text);
       font-weight: 500;
     }
+    .weather-location { font: 600 14px var(--font-mono); color: var(--text); }
+    .weather-icon { font-size: 28px; line-height: 1; }
+    .weather-feels { color: var(--text-secondary); font-size: 11px; }
+    .weather-details { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; margin-top: 12px; color: var(--text-secondary); font-size: 11px; }
+    .weather-details strong { color: var(--text); font-weight: 500; }
 
     /* Motion status specific */
     .sensor-subgrid {
@@ -811,7 +817,28 @@
 <span>Avg: <strong id="humidity-avg">—</strong></span>
 </div>
 </div>
-<!-- CARD 4: MOTION STATUS CARD (planned integration) -->
+<!-- CARD 4: OUTDOOR WEATHER -->
+<div class="telemetry-card card-weather">
+<div>
+<div class="card-header">
+<span class="card-label mono">OUTDOOR WEATHER</span>
+<span class="chip mono" id="weather-status">Loading</span>
+</div>
+<div class="weather-location" id="weather-location">—</div>
+<div class="metric-row" style="margin-top:8px;">
+<div class="metric-value mono"><span class="weather-icon" id="weather-icon" aria-hidden="true">—</span><span id="weather-temp">—</span><span class="metric-unit">°C</span></div>
+</div>
+<div class="weather-feels" id="weather-feels">Feels like —</div>
+<div class="weather-details mono">
+<span>Humidity <strong id="weather-humidity">—</strong></span>
+<span>Pressure <strong id="weather-pressure">—</strong></span>
+<span>Wind <strong id="weather-wind">—</strong></span>
+<span>Rain <strong id="weather-rain">—</strong></span>
+</div>
+</div>
+<div class="card-footer-meta mono"><span id="weather-condition">Weather unavailable</span><span id="weather-updated">Updated —</span></div>
+</div>
+<!-- CARD 5: MOTION STATUS CARD (planned integration) -->
 <div class="telemetry-card card-motion" id="motion-card">
 <div>
 <div class="card-header">
@@ -991,6 +1018,7 @@
     const ONLINE_TIMEOUT_MS = 15000;
     const LATEST_REFRESH_MS = 5000;
     const HISTORY_REFRESH_MS = 10000;
+    const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 
     function setTheme(theme) {
       root.dataset.theme = theme;
@@ -1147,6 +1175,51 @@
       } catch (error) {
         console.error('Room analytics request failed:', error);
         setAnalyticsUnavailable('AI analysis is temporarily unavailable.', true);
+      }
+    }
+
+    function weatherIconForCode(code) {
+      if (code === 0) return '☀️';
+      if (code === 1) return '🌤️';
+      if (code === 2) return '⛅';
+      if (code === 3) return '☁️';
+      if ([45, 48].includes(code)) return '🌫️';
+      if ([51, 53, 55, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '🌧️';
+      if ([71, 73, 75, 77, 85, 86].includes(code)) return '❄️';
+      if ([95, 96, 99].includes(code)) return '⛈️';
+      return '•';
+    }
+
+    function setWeatherUnavailable() {
+      document.getElementById('weather-status').textContent = 'Unavailable';
+      document.getElementById('weather-location').textContent = 'Outdoor weather';
+      document.getElementById('weather-icon').textContent = '—';
+      document.getElementById('weather-temp').textContent = '—';
+      document.getElementById('weather-feels').textContent = 'Weather unavailable';
+      ['weather-humidity', 'weather-pressure', 'weather-wind', 'weather-rain'].forEach(id => { document.getElementById(id).textContent = '—'; });
+      document.getElementById('weather-condition').textContent = 'Weather unavailable';
+      document.getElementById('weather-updated').textContent = 'Updated —';
+    }
+
+    async function loadWeather() {
+      try {
+        const response = await fetch('/api/weather/current', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const weather = await response.json();
+        document.getElementById('weather-status').textContent = weather.stale ? 'Cached' : 'Live';
+        document.getElementById('weather-location').textContent = weather.location || 'Outdoor weather';
+        document.getElementById('weather-icon').textContent = weatherIconForCode(Number(weather.weather_code));
+        document.getElementById('weather-temp').textContent = Number(weather.temperature).toFixed(1);
+        document.getElementById('weather-feels').textContent = `Feels like ${Number(weather.apparent_temperature).toFixed(1)} °C`;
+        document.getElementById('weather-humidity').textContent = `${Number(weather.humidity).toFixed(0)} %`;
+        document.getElementById('weather-pressure').textContent = `${Number(weather.pressure).toFixed(0)} hPa`;
+        document.getElementById('weather-wind').textContent = `${Number(weather.wind_speed).toFixed(1)} km/h`;
+        document.getElementById('weather-rain').textContent = `${Number(weather.precipitation).toFixed(1)} mm`;
+        document.getElementById('weather-condition').textContent = weather.condition || 'Unknown';
+        document.getElementById('weather-updated').textContent = weather.weather_time ? `Updated ${formatTime(weather.weather_time)}` : 'Updated —';
+      } catch (error) {
+        console.error('Outdoor weather request failed:', error);
+        setWeatherUnavailable();
       }
     }
 
@@ -1437,6 +1510,7 @@
       loadLatest();
       loadHistory();
       loadAnalytics();
+      loadWeather();
 
       const updateClock = () => {
         document.getElementById('local-clock').textContent =
@@ -1447,6 +1521,7 @@
       setInterval(loadLatest, LATEST_REFRESH_MS);
       setInterval(loadHistory, HISTORY_REFRESH_MS);
       setInterval(loadAnalytics, 30000);
+      setInterval(loadWeather, WEATHER_REFRESH_MS);
       setInterval(updateClock, 1000);
     });
   </script>

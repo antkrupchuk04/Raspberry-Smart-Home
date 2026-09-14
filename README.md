@@ -133,3 +133,7 @@ curl http://127.0.0.1:8000/api/analytics/room
 ```
 
 The endpoint reports `available: false` for a subsystem with insufficient fresh history rather than fabricating an analysis.
+
+## Current Outdoor Weather
+
+`GET /api/weather/current` obtains current outdoor weather through the FastAPI backend from Open-Meteo. Set `WEATHER_LAT`, `WEATHER_LON`, and `WEATHER_LOCATION_NAME` in `.env`. The backend caches successful responses for ten minutes; if a refresh fails, it returns the last cached result marked `stale: true`. No API key is required and the browser never calls Open-Meteo directly.
