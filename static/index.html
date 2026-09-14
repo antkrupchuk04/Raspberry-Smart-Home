@@ -503,6 +503,12 @@
       border-radius: var(--badge-radius);
       padding: 2px;
     }
+    .chart-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
     .segmented-btn {
       background: transparent;
       border: none;
@@ -846,16 +852,23 @@
 <div class="panel-header">
 <div class="panel-title-group">
 <div style="display:flex; align-items:center; gap:8px;">
-<h2>Temperature History</h2>
-<span class="chip mono" style="font-size: 10px; border-color: rgba(210, 153, 34, 0.3); color: var(--orange);">BMP280 · esp32-room1</span>
+<h2 id="chart-title">Temperature History</h2>
+<span class="chip mono" id="chart-sensor" style="font-size: 10px; border-color: rgba(210, 153, 34, 0.3); color: var(--orange);">BMP280 · esp32-room1</span>
 </div>
 <p class="panel-subtitle mono">Continuous telemetry streamed via Mosquitto MQTT</p>
 </div>
-<!-- Segmented Filter Controls -->
-<div class="segmented-control">
-<button class="segmented-btn active" onclick="setChartRange(this, '1H')">1H</button>
-<button class="segmented-btn" onclick="setChartRange(this, '6H')">6H</button>
-<button class="segmented-btn" onclick="setChartRange(this, '24H')">24H</button>
+<!-- Metric and time-range controls -->
+<div class="chart-controls">
+<div class="segmented-control" aria-label="Chart metric">
+<button class="segmented-btn chart-metric-btn active" onclick="setChartMetric(this, 'temperature')">Temp</button>
+<button class="segmented-btn chart-metric-btn" onclick="setChartMetric(this, 'humidity')">Humidity</button>
+<button class="segmented-btn chart-metric-btn" onclick="setChartMetric(this, 'pressure')">Pressure</button>
+</div>
+<div class="segmented-control" aria-label="Chart range">
+<button class="segmented-btn chart-range-btn active" onclick="setChartRange(this, '1H')">1H</button>
+<button class="segmented-btn chart-range-btn" onclick="setChartRange(this, '6H')">6H</button>
+<button class="segmented-btn chart-range-btn" onclick="setChartRange(this, '24H')">24H</button>
+</div>
 </div>
 </div>
 <!-- Canvas Area -->
@@ -965,8 +978,15 @@
     const root = document.documentElement;
 
     let activeHours = 1;
+    let activeMetric = 'temperature';
     let historyData = [];
     let hoveredPoint = null;
+
+    const CHART_METRICS = {
+      temperature: { label: 'Temperature', unit: '°C', sensor: 'BMP280 · esp32-room1', color: 'var(--orange)' },
+      humidity: { label: 'Humidity', unit: '%', sensor: 'DHT11 · esp32-room1', color: 'var(--green)' },
+      pressure: { label: 'Pressure', unit: 'hPa', sensor: 'BMP280 · esp32-room1', color: 'var(--blue)' }
+    };
 
     const ONLINE_TIMEOUT_MS = 15000;
     const LATEST_REFRESH_MS = 5000;
@@ -1078,8 +1098,7 @@
                       Array.isArray(payload.readings) ? payload.readings : [];
 
         historyData = historyData.filter(
-          row => Number.isFinite(Number(row.temperature)) &&
-                 Number.isFinite(new Date(row.recorded_at).getTime())
+          row => Number.isFinite(new Date(row.recorded_at).getTime())
         ).sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
 
         renderChart();
@@ -1196,12 +1215,14 @@
 
       ctx.clearRect(0, 0, width, height);
 
-      if (!historyData.length) {
+      const metric = CHART_METRICS[activeMetric];
+      const chartData = historyData.filter(row => Number.isFinite(Number(row[activeMetric])));
+      if (!chartData.length) {
         ctx.fillStyle = getComputedStyle(root).getPropertyValue('--chart-text').trim();
         ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('No telemetry data', width / 2, height / 2);
+        ctx.fillText(`No ${metric.label.toLowerCase()} history available`, width / 2, height / 2);
         canvas._pts = [];
         return;
       }
@@ -1213,7 +1234,7 @@
       const plotW = width - paddingLeft - paddingRight;
       const plotH = height - paddingTop - paddingBottom;
 
-      const values = historyData.map(row => Number(row.temperature));
+      const values = chartData.map(row => Number(row[activeMetric]));
       let minY = Math.min(...values);
       let maxY = Math.max(...values);
 
@@ -1248,19 +1269,19 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        ctx.fillText(`${label.toFixed(1)}°C`, paddingLeft - 8, y);
+        ctx.fillText(`${label.toFixed(1)}${metric.unit}`, paddingLeft - 8, y);
       }
 
-      const firstTime = new Date(historyData[0].recorded_at).getTime();
-      const lastTime = new Date(historyData[historyData.length - 1].recorded_at).getTime();
+      const firstTime = new Date(chartData[0].recorded_at).getTime();
+      const lastTime = new Date(chartData[chartData.length - 1].recorded_at).getTime();
       const timeSpan = Math.max(1, lastTime - firstTime);
-      const pts = historyData.map(row => {
+      const pts = chartData.map(row => {
         const timestamp = new Date(row.recorded_at).getTime();
         const x = timeSpan === 1
           ? paddingLeft + plotW / 2
           : paddingLeft + ((timestamp - firstTime) / timeSpan) * plotW;
 
-        const val = Number(row.temperature);
+        const val = Number(row[activeMetric]);
         const normY = (val - minY) / (maxY - minY);
         const y = paddingTop + plotH * (1 - normY);
 
@@ -1339,7 +1360,7 @@
     }
 
     function setChartRange(btn, span) {
-      document.querySelectorAll('.segmented-btn')
+      document.querySelectorAll('.chart-range-btn')
         .forEach(b => b.classList.remove('active'));
 
       btn.classList.add('active');
@@ -1347,6 +1368,20 @@
       hoveredPoint = null;
       tooltip.style.display = 'none';
       loadHistory();
+    }
+
+    function setChartMetric(btn, metric) {
+      activeMetric = metric;
+      document.querySelectorAll('.chart-metric-btn')
+        .forEach(button => button.classList.toggle('active', button === btn));
+      const config = CHART_METRICS[metric];
+      document.getElementById('chart-title').textContent = `${config.label} History`;
+      const sensor = document.getElementById('chart-sensor');
+      sensor.textContent = config.sensor;
+      sensor.style.color = config.color;
+      hoveredPoint = null;
+      tooltip.style.display = 'none';
+      renderChart();
     }
 
     canvas.addEventListener('mousemove', event => {
@@ -1382,7 +1417,7 @@
 
       ttTime.textContent =
         new Date(nearest.time).toLocaleString();
-      ttVal.textContent = `${nearest.val.toFixed(2)} °C`;
+      ttVal.textContent = `${nearest.val.toFixed(2)} ${CHART_METRICS[activeMetric].unit}`;
     });
 
     canvas.addEventListener('mouseleave', () => {
