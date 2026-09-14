@@ -717,6 +717,8 @@
 <span class="divider">|</span>
 <span class="text-secondary">Device: <strong class="text-main" id="device-id">—</strong></span>
 <span class="divider">|</span>
+<span class="text-secondary">Humidity: <strong class="text-main" id="humidity-display">—</strong></span>
+<span class="divider">|</span>
 <span class="text-secondary">Last telemetry: <strong class="text-main" id="node-last-sync">—</strong></span>
 </div>
 <div class="strip-actions mono">
@@ -931,6 +933,7 @@
 
     const tempDisp = document.getElementById('temp-display-val');
     const pressureDisp = document.getElementById('pressure-display-val');
+    const humidityDisp = document.getElementById('humidity-display');
     const lastSync = document.getElementById('node-last-sync');
     const deviceId = document.getElementById('device-id');
     const themeToggle = document.getElementById('theme-toggle');
@@ -1015,8 +1018,10 @@
 
         const temperature = Number(data.temperature);
         const pressure = Number(data.pressure);
+        const humidity = Number(data.humidity);
         tempDisp.textContent = Number.isFinite(temperature) ? temperature.toFixed(2) : '—';
         pressureDisp.textContent = Number.isFinite(pressure) ? pressure.toFixed(2) : '—';
+        humidityDisp.textContent = Number.isFinite(humidity) ? `${humidity.toFixed(1)} %` : '—';
         deviceId.textContent = data.device_id || '—';
 
         if (data.recorded_at) {
