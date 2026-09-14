@@ -172,6 +172,9 @@
 .card-footer { font-size: 11px; color: var(--text-secondary); margin-top: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .card-footer:empty { display: none; }
 .chip { font-size: 10px; padding: 2px 6px; border-radius: var(--badge-radius); border: 1px solid var(--border); background: var(--surface-muted); color: var(--text-secondary); }
+.chip[data-state="online"] { color: var(--green); }
+.chip[data-state="warning"] { color: var(--orange); }
+.chip[data-state="error"] { color: var(--red); }
 .sensor-card .card-badge { color: var(--accent); }
 .sensor-card .card-title { font: 600 11px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; }
 .sensor-card .card-footer { margin-top: auto; padding-top: 12px; }

@@ -2,7 +2,7 @@ import os
 import logging
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import psycopg2
@@ -10,6 +10,7 @@ from psycopg2.extras import RealDictCursor
 
 from room_analytics import analyze_room
 from weather_service import WeatherUnavailable, get_current_weather
+from system_status import SystemStatusMonitor
 
 
 LOGGER = logging.getLogger(__name__)
@@ -27,6 +28,13 @@ DB_CONFIG = {
     "user": os.environ["DB_USER"],
     "password": os.environ["DB_PASSWORD"],
 }
+
+system_monitor = SystemStatusMonitor(
+    DB_CONFIG,
+    mqtt_host=os.getenv("MQTT_BROKER", "localhost"),
+    mqtt_port=int(os.getenv("MQTT_PORT", "1883")),
+    zigbee_device=os.getenv("ZIGBEE_SERIAL_DEVICE"),
+)
 
 
 def get_connection():
@@ -74,6 +82,11 @@ def get_latest():
         )
 
     return reading
+
+
+@app.get("/api/system/status")
+def get_system_status():
+    return JSONResponse(system_monitor.get_system_status(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/sensors/history")

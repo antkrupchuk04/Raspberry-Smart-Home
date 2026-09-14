@@ -10,7 +10,7 @@ const MODULES = {
   history: { title: 'Temperature History', subtitle: 'Room 1 · Sensor history', badge: 'BMP280 · esp32-room1', className: 'history-card', titleId: 'chart-title', badgeId: 'chart-sensor', footerId: 'history-status', footer: 'Loading history…' },
   weather: { title: 'Outdoor Weather', accent: 'blue', badge: 'Loading', badgeId: 'weather-status' },
   ai: { title: 'AI Room Analysis', badge: 'Collecting data', badgeId: 'ai-anomaly' },
-  system: { title: 'System Status', subtitle: 'Raspberry Pi 5', badge: 'Partial monitoring', footer: 'Host metrics, uptime, MQTT and Internet checks pending integration.' },
+  system: { title: 'System Status', subtitle: 'Raspberry Pi 5', badge: 'Connecting', badgeId: 'system-summary', footerId: 'system-updated', footer: 'Loading system health…' },
   motion: { title: 'Motion', subtitle: 'Room 1 · Presence & activity', badge: 'Planned', accent: 'green' },
   automation: { title: 'Automation', subtitle: 'Rules, modes & notifications', badge: 'Planned' },
   camera: { title: 'Camera', subtitle: 'Devices · Snapshot monitoring', badge: 'Planned' },
@@ -103,12 +103,23 @@ let latestPending = false;
 let historyController = null;
 let lastReadingTime = null;
 let telemetryReachable = false;
-let apiReachable = false;
+let systemSnapshot = null;
+let systemReceivedAt = null;
+let systemPending = false;
+let systemRequestFailed = false;
 const ONLINE_TIMEOUT_MS = 15000;
 const LATEST_REFRESH_MS = 5000;
 const HISTORY_REFRESH_MS = 10000;
 const ANALYTICS_REFRESH_MS = 30000;
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
+const SYSTEM_STATUS_REFRESH_MS = 10000;
+const SYSTEM_REQUEST_TIMEOUT_MS = 8000;
+const SYSTEM_SERVICE_IDS = ['mqtt', 'database', 'internet', 'esp32', 'api', 'zigbee'];
+const SYSTEM_STATE_LABELS = {
+  online: ['ONLINE', 'online'], connected: ['CONNECTED', 'online'], running: ['RUNNING', 'online'],
+  offline: ['OFFLINE', 'offline'], error: ['ERROR', 'error'], unknown: ['UNKNOWN', 'unknown'],
+  not_configured: ['NOT CONFIGURED', 'warning'], device_present: ['DEVICE PRESENT', 'online']
+};
 
 function clearHover() { hoveredPoint = null; tooltip.style.display = 'none'; }
 function setTheme(theme) {
@@ -124,12 +135,85 @@ function updateConnectionState() {
   const age = Date.now() - lastReadingTime;
   const online = telemetryReachable && lastReadingTime !== null && age >= -5000 && age < ONLINE_TIMEOUT_MS;
   setState('room-status', online ? 'ONLINE' : 'OFFLINE', online ? 'online' : 'offline');
-  setState('system-esp32', online ? 'ONLINE' : 'OFFLINE', online ? 'online' : 'offline');
-  const state = !apiReachable ? 'offline' : online ? 'online' : 'warning';
+  updateSystemSummary();
+}
+
+function updateSystemSummary() {
+  let overall = systemSnapshot?.overall_status;
+  if (systemSnapshot) {
+    const esp32 = systemSnapshot.services?.esp32 || {};
+    const age = numberOrNull(esp32.age_seconds);
+    const timeout = numberOrNull(systemSnapshot.thresholds?.esp32_timeout_seconds);
+    const elapsed = (performance.now() - systemReceivedAt) / 1000;
+    const expired = esp32.status === 'online' && age !== null && timeout !== null && age + elapsed >= timeout;
+    const status = expired ? 'offline' : esp32.status;
+    setState('system-esp32', ...(SYSTEM_STATE_LABELS[status] || SYSTEM_STATE_LABELS.unknown));
+    if (expired && overall === 'healthy') overall = 'warning';
+  }
+  const labels = { healthy: ['HEALTHY', 'online'], warning: ['WARNING', 'warning'], degraded: ['DEGRADED', 'error'] };
+  const [label, state] = labels[overall] || [systemRequestFailed ? 'UNAVAILABLE' : 'CONNECTING', systemRequestFailed ? 'error' : 'unknown'];
+  setState('system-summary', label, state);
   const pill = byId('overall-status');
-  if (pill.dataset.state !== state) pill.dataset.state = state;
-  setText('overall-status-text', !apiReachable ? 'OFFLINE' : online ? 'ONLINE' : 'DEGRADED');
-  pill.querySelector('.glow-dot').classList.toggle('pulse', online);
+  const headerState = state === 'error' ? 'offline' : state;
+  if (pill.dataset.state !== headerState) pill.dataset.state = headerState;
+  setText('overall-status-text', label);
+  pill.querySelector('.glow-dot').classList.toggle('pulse', state === 'online');
+}
+
+async function loadSystemStatus() {
+  if (systemPending) return;
+  systemPending = true;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SYSTEM_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch('/api/system/status', { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (!data.host || !data.cpu || !data.memory || !data.disk || !data.services || !data.thresholds ||
+        !['healthy', 'warning', 'degraded'].includes(data.overall_status)) throw new Error('Incomplete system status');
+    systemSnapshot = data;
+    systemReceivedAt = performance.now();
+    systemRequestFailed = false;
+    const metric = (id, value, text, warning, critical = Infinity) => {
+      setState(id, value === null ? '—' : text,
+        value === null ? 'unknown' : value >= critical ? 'error' : value >= warning ? 'warning' : 'online');
+    };
+    const cpu = numberOrNull(data.cpu.usage_percent);
+    const temperature = numberOrNull(data.cpu.temperature_c);
+    metric('system-cpu', cpu, `${cpu?.toFixed(0)} %`, data.thresholds.cpu_warning);
+    metric('system-temperature', temperature, `${temperature?.toFixed(1)} °C`, data.thresholds.cpu_temp_warning, data.thresholds.cpu_temp_critical);
+    for (const key of ['memory', 'disk']) {
+      const usage = numberOrNull(data[key].usage_percent);
+      metric(`system-${key}`, usage, `${usage?.toFixed(0)} %`, data.thresholds[`${key}_warning`]);
+      const used = numberOrNull(data[key].used_gb);
+      const total = numberOrNull(data[key].total_gb);
+      const title = used !== null && total !== null ? `${used.toFixed(1)} / ${total.toFixed(1)} GB` : 'Usage unavailable';
+      if (byId(`system-${key}`).title !== title) byId(`system-${key}`).title = title;
+    }
+    for (const id of ['system-uptime', 'system-card-uptime']) setText(id, data.host.uptime || '—');
+    setText('system-hostname', data.host.hostname || '—');
+    for (const key of SYSTEM_SERVICE_IDS) {
+      setState(`system-${key}`, ...(SYSTEM_STATE_LABELS[data.services[key]?.status] || SYSTEM_STATE_LABELS.unknown));
+    }
+    const alerts = Array.isArray(data.alerts) ? data.alerts.map(alert => alert.message).join(' · ') : '';
+    setText('system-updated', `${alerts ? `${alerts} · ` : ''}Updated ${formatTime(data.generated_at)}`);
+    setState('connection-badge', 'API: connected', 'online');
+  } catch (_) {
+    systemSnapshot = null;
+    systemRequestFailed = true;
+    for (const key of ['cpu', 'memory', 'disk', 'temperature']) {
+      setState(`system-${key}`, '—', 'unknown');
+      byId(`system-${key}`).removeAttribute('title');
+    }
+    for (const key of SYSTEM_SERVICE_IDS) setState(`system-${key}`, 'UNKNOWN', 'unknown');
+    setState('system-api', 'UNAVAILABLE', 'error');
+    for (const id of ['system-uptime', 'system-card-uptime']) setText(id, '—');
+    setText('system-updated', 'System monitoring unavailable. Retrying automatically.');
+  } finally {
+    clearTimeout(timer);
+    systemPending = false;
+    updateSystemSummary();
+  }
 }
 
 async function loadLatest() {
@@ -137,15 +221,11 @@ async function loadLatest() {
   latestPending = true;
   try {
     const response = await fetch('/api/sensors/latest', { cache: 'no-store' });
-    apiReachable = true;
     setState('connection-badge', 'API: connected', 'online');
-    setState('system-api', response.status < 500 ? 'RUNNING' : 'ERROR', response.status < 500 ? 'online' : 'error');
     if (!response.ok) {
-      setState('system-database', response.status === 404 ? 'Query OK · no readings' : 'Query unavailable', response.status === 404 ? 'online' : 'unknown');
       throw new Error(`HTTP ${response.status}`);
     }
     const data = await response.json();
-    setState('system-database', 'Query OK', 'online');
     setText('device-id', data.device_id || '—');
     setText('node-last-sync', formatTime(data.recorded_at));
     const timestamp = data.recorded_at ? new Date(data.recorded_at).getTime() : NaN;
@@ -160,10 +240,7 @@ async function loadLatest() {
   } catch (error) {
     telemetryReachable = false;
     if (error instanceof TypeError || error instanceof SyntaxError) {
-      apiReachable = false;
       setState('connection-badge', 'API: unavailable', 'error');
-      setState('system-api', 'UNAVAILABLE', 'error');
-      setState('system-database', 'Unknown', 'unknown');
     }
     // Values remain visible with their timestamps, but are clearly marked stale.
     for (const sensor of SENSORS) byId(`sensor-${sensor.key}`).dataset.stale = 'true';
@@ -605,6 +682,7 @@ loadLatest();
 loadHistory();
 loadAnalytics();
 loadWeather();
+loadSystemStatus();
 const updateClock = () => {
   setText('local-clock', new Date().toLocaleTimeString());
   updateConnectionState();
@@ -615,4 +693,5 @@ setInterval(loadLatest, LATEST_REFRESH_MS);
 setInterval(loadHistory, HISTORY_REFRESH_MS);
 setInterval(loadAnalytics, ANALYTICS_REFRESH_MS);
 setInterval(loadWeather, WEATHER_REFRESH_MS);
+setInterval(loadSystemStatus, SYSTEM_STATUS_REFRESH_MS);
 setInterval(updateClock, 1000);

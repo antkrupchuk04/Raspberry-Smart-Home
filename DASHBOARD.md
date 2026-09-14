@@ -1,6 +1,6 @@
 # Dashboard architecture
 
-The dashboard is a refactor of the existing vanilla HTML/CSS/JavaScript client. FastAPI endpoints, PostgreSQL storage, MQTT collection and refresh intervals are unchanged. The existing dark/light tokens, fonts, borders, shadows, card padding, grid gaps and status animation remain the visual foundation.
+The dashboard is a refactor of the existing vanilla HTML/CSS/JavaScript client. Existing FastAPI endpoints, PostgreSQL storage, MQTT collection and refresh intervals are preserved. A dedicated System Status endpoint now supplies real host and dependency health. The existing dark/light tokens, fonts, borders, shadows, card padding, grid gaps and status animation remain the visual foundation.
 
 ## Layout
 
@@ -50,14 +50,15 @@ The three first-class sensors are configured in `SENSORS`. They use one `sensor-
 | Selected history window | `/api/sensors/history?hours=1`, `6`, or `24` | 10 seconds |
 | Comfort, insights, anomaly and forecast | `/api/analytics/room` | 30 seconds |
 | Outdoor weather | `/api/weather/current` | 10 minutes |
+| Host and dependency health | `/api/system/status` | 10 seconds |
 
-There are no new network pollers. Switching chart metric reuses the fetched history. Range changes cancel the previous request so a slow response cannot replace a newer selection. Duplicate current/history requests cannot overlap. DOM text changes only when the value changes, AI messages are compared before replacing nodes, and unchanged history avoids redundant chart rendering. A `ResizeObserver` resizes the canvas when its container changes, including fullscreen transitions. The existing one-second clock updates freshness locally without another request.
+System Status has one independent ten-second poller with request timeout and overlap protection. Switching chart metric reuses the fetched history. Range changes cancel the previous request so a slow response cannot replace a newer selection. Duplicate current/history requests cannot overlap. DOM text changes only when the value changes, AI messages are compared before replacing nodes, and unchanged history avoids redundant chart rendering. A `ResizeObserver` resizes the canvas when its container changes, including fullscreen transitions. The existing one-second clock updates freshness locally without another request.
 
 CSV export downloads the selected window already in memory, containing UTC timestamps and all three metrics. Fullscreen uses the browser API, with an expanded-card fallback that Escape closes. Seven- and thirty-day controls are visible but disabled because the current history endpoint supports at most 24 hours.
 
 ## System status and future modules
 
-The current APIs do not provide CPU, RAM, disk, CPU temperature, system uptime, independent MQTT health or Internet connectivity. Their layout slots are reserved and explicitly marked unavailable/pending; values are not simulated. Database `Query OK` means the existing latest-reading query succeeded, not a separate database health probe. API status reflects that request and ESP32 status reflects the existing 15-second reading freshness rule. Overall status summarizes this telemetry path; host health remains partially monitored.
+The existing card now uses `/api/system/status` for real CPU, RAM, disk, temperature, uptime, hostname, MQTT TCP reachability, PostgreSQL `SELECT 1`, Internet connectivity, ESP32 freshness and optional Zigbee device presence. Overall status includes host thresholds and dependency failures. CPU counters warm up on the first request after restart; missing metrics show unavailable without breaking the remaining checks. See [System Status](SYSTEM_STATUS.md) for caching, thresholds, configuration, response structure and operational commands.
 
 AI recommendations use the actual comfort messages returned by the existing analysis endpoint. Its already-implemented anomaly result remains visible. No cloud AI or new recommendation model is introduced.
 

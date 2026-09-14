@@ -23,7 +23,7 @@ BMP280 → ESP32 → MQTT (Mosquitto) → Python collector → PostgreSQL → Fa
 - Online/offline indicator based on reading freshness
 - systemd-managed Mosquitto, PostgreSQL, collector, and API services
 
-See [Dashboard architecture](DASHBOARD.md) for the grid layout, reusable components, responsive behavior, polling intervals and module extension guide. System Status displays the available API/ESP32/query state; host metrics and unimplemented modules remain clearly marked as pending integration.
+See [Dashboard architecture](DASHBOARD.md) for the grid layout, reusable components, responsive behavior, polling intervals and module extension guide. [System Status](SYSTEM_STATUS.md) provides real Pi CPU/RAM/disk/temperature/uptime, MQTT, database, Internet and ESP32 health through `GET /api/system/status`.
 
 ## Hardware
 
@@ -76,6 +76,7 @@ Set the PostgreSQL and MQTT values for the deployment. Do not commit `.env`; it 
 | `GET /docs` | FastAPI OpenAPI documentation |
 | `GET /api/sensors/latest` | Most recent sensor reading |
 | `GET /api/sensors/history?hours=1` | Sensor history for 1, 6, or 24 hours |
+| `GET /api/system/status` | Cached real host metrics, dependency health and optional Zigbee detection |
 
 Example latest-reading response:
 

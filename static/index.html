@@ -10,8 +10,8 @@
         (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
     } catch (_) { document.documentElement.dataset.theme = 'dark'; }
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=console-1">
-  <script src="/static/app.js?v=console-1" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=system-1">
+  <script src="/static/app.js?v=system-1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#environment">Skip to telemetry</a>
@@ -25,9 +25,9 @@
       </div>
       <div class="header-meta mono">
         <time id="local-clock">—</time>
-        <span class="text-secondary" title="System uptime will be available with host monitoring">Uptime <strong id="system-uptime">—</strong></span>
+        <span class="text-secondary" title="Raspberry Pi system uptime">Uptime <strong id="system-uptime">—</strong></span>
         <span class="chip" id="connection-badge">API: connecting</span>
-        <span class="status-pill" id="overall-status" data-state="unknown" title="Overall telemetry status; host health is not yet monitored"><span class="glow-dot" aria-hidden="true"></span><span id="overall-status-text">CONNECTING</span></span>
+        <span class="status-pill" id="overall-status" data-state="unknown" title="Host and dependency health"><span class="glow-dot" aria-hidden="true"></span><span id="overall-status-text">CONNECTING</span></span>
         <button class="theme-toggle mono" id="theme-toggle" type="button" aria-label="Switch to light theme">☀ Light</button>
       </div>
     </div>
@@ -112,8 +112,8 @@
     <div class="ai-forecast"><div><span class="detail-label mono">30 min forecast</span><div class="ai-forecast-value mono" id="ai-forecast">—</div></div><span class="ai-detail mono" id="ai-trend">Trend: collecting data</span></div>
   </template>
   <template id="system-body">
-    <dl class="detail-grid mono"><div><dt>CPU usage</dt><dd>—</dd></div><div><dt>RAM usage</dt><dd>—</dd></div><div><dt>Disk usage</dt><dd>—</dd></div><div><dt>CPU temp</dt><dd>—</dd></div></dl>
-    <dl class="status-list mono"><div><dt>MQTT</dt><dd>Not monitored</dd></div><div><dt>Database</dt><dd id="system-database" data-state="unknown">Unknown</dd></div><div><dt>Internet</dt><dd>Not monitored</dd></div><div><dt>ESP32</dt><dd id="system-esp32" data-state="unknown">Connecting</dd></div><div><dt>API</dt><dd id="system-api" data-state="unknown">Connecting</dd></div><div><dt>Zigbee coordinator</dt><dd>Planned</dd></div></dl>
+    <dl class="detail-grid mono"><div><dt>CPU usage</dt><dd id="system-cpu" data-state="unknown">—</dd></div><div><dt>RAM usage</dt><dd id="system-memory" data-state="unknown">—</dd></div><div><dt>Disk usage</dt><dd id="system-disk" data-state="unknown">—</dd></div><div><dt>CPU temp</dt><dd id="system-temperature" data-state="unknown">—</dd></div></dl>
+    <dl class="status-list mono"><div><dt>Uptime</dt><dd id="system-card-uptime">—</dd></div><div><dt>Host</dt><dd id="system-hostname">—</dd></div><div><dt>MQTT</dt><dd id="system-mqtt" data-state="unknown">Unknown</dd></div><div><dt>Database</dt><dd id="system-database" data-state="unknown">Unknown</dd></div><div><dt>Internet</dt><dd id="system-internet" data-state="unknown">Unknown</dd></div><div><dt>ESP32</dt><dd id="system-esp32" data-state="unknown">Unknown</dd></div><div><dt>API</dt><dd id="system-api" data-state="unknown">Unknown</dd></div><div><dt>Zigbee coordinator</dt><dd id="system-zigbee" data-state="unknown">Unknown</dd></div></dl>
   </template>
   <template id="motion-body">
     <p class="empty-state">Module not yet installed.</p>
