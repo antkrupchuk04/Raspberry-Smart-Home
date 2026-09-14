@@ -218,13 +218,16 @@
       margin: 0 auto;
       padding: 1rem 1.25rem;
       flex: 1;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      grid-auto-flow: row dense;
+      align-items: stretch;
       gap: 1rem;
     }
 
     /* 2. Device Overview Strip */
     .overview-strip {
+      grid-column: 1 / -1;
       background-color: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--card-radius);
@@ -275,14 +278,7 @@
 
     /* 3. Primary Telemetry Cards Grid */
     .telemetry-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1rem;
-    }
-    @media (max-width: 520px) {
-      .telemetry-grid {
-        grid-template-columns: 1fr;
-      }
+      display: contents;
     }
 
     .telemetry-card {
@@ -312,6 +308,19 @@
     .card-weather::before { background-color: var(--blue); }
     .card-motion::before { background-color: var(--green); }
     .card-motion.motion-alert::before { background-color: var(--orange); }
+
+    /* Monitoring layout: metrics across the top, history beside weather and AI. */
+    .card-temp,
+    .card-humidity,
+    .card-pressure {
+      grid-column: span 4;
+      min-height: 210px;
+    }
+    .card-temp { order: 1; }
+    .card-humidity { order: 2; }
+    .card-pressure { order: 3; }
+    .card-weather { grid-column: span 4; order: 5; }
+    .card-motion { grid-column: span 4; order: 7; }
 
     .card-header {
       display: flex;
@@ -463,14 +472,7 @@
 
     /* 4. Bottom Analytics Section (History + Motion Log) */
     .analytics-section {
-      display: grid;
-      grid-template-columns: 8fr 4fr;
-      gap: 1rem;
-    }
-    @media (max-width: 1024px) {
-      .analytics-section {
-        grid-template-columns: 1fr;
-      }
+      display: contents;
     }
 
     .analytics-panel {
@@ -481,6 +483,13 @@
       display: flex;
       flex-direction: column;
     }
+    .history-panel {
+      grid-column: span 8;
+      grid-row: span 2;
+      min-height: 480px;
+      order: 4;
+    }
+    .motion-events-panel { grid-column: span 8; order: 8; }
     .panel-header {
       display: flex;
       align-items: center;
@@ -543,6 +552,11 @@
       margin-top: 14px;
       width: 100%;
       height: 250px;
+    }
+    .history-panel .chart-container {
+      height: auto;
+      min-height: 300px;
+      flex: 1;
     }
     #tempCanvas {
       width: 100%;
@@ -626,6 +640,8 @@
       border: 1px solid var(--border);
       border-radius: var(--card-radius);
       padding: 16px;
+      grid-column: span 4;
+      order: 6;
     }
     .ai-analysis-grid {
       display: grid;
@@ -650,6 +666,37 @@
     @media (max-width: 720px) {
       .ai-analysis-grid { grid-template-columns: 1fr; }
       .ai-forecast { border-left: 0; border-top: 1px solid var(--border); padding: 12px 0 0; }
+    }
+
+    /* Tablet keeps the three core readings together; supporting panels stack. */
+    @media (max-width: 1024px) {
+      .history-panel,
+      .card-weather,
+      .ai-analysis-panel,
+      .card-motion,
+      .motion-events-panel {
+        grid-column: 1 / -1;
+        grid-row: auto;
+      }
+      .history-panel { min-height: 420px; }
+    }
+
+    /* Phone layout follows the reading order from indoor metrics to activity. */
+    @media (max-width: 720px) {
+      main { grid-template-columns: 1fr; }
+      .card-temp,
+      .card-humidity,
+      .card-pressure,
+      .history-panel,
+      .card-weather,
+      .ai-analysis-panel,
+      .card-motion,
+      .motion-events-panel {
+        grid-column: 1;
+        grid-row: auto;
+      }
+      .history-panel { min-height: 390px; }
+      .history-panel .chart-container { min-height: 260px; }
     }
 
     /* 5. Footer */
@@ -875,7 +922,7 @@
 <!-- 4. TEMPERATURE HISTORY & MOTION EVENT HISTORY -->
 <section class="analytics-section">
 <!-- LEFT: TEMPERATURE HISTORY CANVAS GRAPH -->
-<div class="analytics-panel">
+<div class="analytics-panel history-panel">
 <div class="panel-header">
 <div class="panel-title-group">
 <div style="display:flex; align-items:center; gap:8px;">
@@ -908,7 +955,7 @@
 </div>
 </div>
 <!-- RIGHT: MOTION EVENTS COMPACT TABLE -->
-<div class="analytics-panel">
+<div class="analytics-panel motion-events-panel">
 <div class="panel-header">
 <div class="panel-title-group">
 <div style="display:flex; align-items:center; gap:6px;">
