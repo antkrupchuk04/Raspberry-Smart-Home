@@ -276,10 +276,10 @@
     /* 3. Primary Telemetry Cards Grid */
     .telemetry-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 1rem;
     }
-    @media (max-width: 900px) {
+    @media (max-width: 520px) {
       .telemetry-grid {
         grid-template-columns: 1fr;
       }
@@ -308,6 +308,7 @@
     }
     .card-temp::before { background-color: var(--orange); }
     .card-pressure::before { background-color: var(--blue); }
+    .card-humidity::before { background-color: var(--green); }
     .card-motion::before { background-color: var(--green); }
     .card-motion.motion-alert::before { background-color: var(--orange); }
 
@@ -781,7 +782,30 @@
 <!-- Barometric Level Gauge -->
 <div class="card-footer-meta mono"><span>Live reading from the sensor API</span></div>
 </div>
-<!-- CARD 3: MOTION STATUS CARD (planned integration) -->
+<!-- CARD 3: HUMIDITY (DHT11) -->
+<div class="telemetry-card card-humidity">
+<div>
+<div class="card-header">
+<span class="card-label mono">DHT11 / HUMIDITY</span>
+<span class="chip chip-green mono">GPIO 4</span>
+</div>
+<div class="metric-row">
+<div class="metric-value mono">
+<span id="humidity-card-value">—</span>
+<span class="metric-unit">%</span>
+</div>
+<span class="delta-badge mono" id="humidity-trend">—</span>
+</div>
+</div>
+<div class="card-footer-meta mono">
+<span>Min: <strong id="humidity-min">—</strong></span>
+<span class="divider">·</span>
+<span>Max: <strong id="humidity-max">—</strong></span>
+<span class="divider">·</span>
+<span>Avg: <strong id="humidity-avg">—</strong></span>
+</div>
+</div>
+<!-- CARD 4: MOTION STATUS CARD (planned integration) -->
 <div class="telemetry-card card-motion" id="motion-card">
 <div>
 <div class="card-header">
@@ -934,6 +958,7 @@
     const tempDisp = document.getElementById('temp-display-val');
     const pressureDisp = document.getElementById('pressure-display-val');
     const humidityDisp = document.getElementById('humidity-display');
+    const humidityCardValue = document.getElementById('humidity-card-value');
     const lastSync = document.getElementById('node-last-sync');
     const deviceId = document.getElementById('device-id');
     const themeToggle = document.getElementById('theme-toggle');
@@ -1022,6 +1047,7 @@
         tempDisp.textContent = Number.isFinite(temperature) ? temperature.toFixed(2) : '—';
         pressureDisp.textContent = Number.isFinite(pressure) ? pressure.toFixed(2) : '—';
         humidityDisp.textContent = Number.isFinite(humidity) ? `${humidity.toFixed(1)} %` : '—';
+        humidityCardValue.textContent = Number.isFinite(humidity) ? humidity.toFixed(1) : '—';
         deviceId.textContent = data.device_id || '—';
 
         if (data.recorded_at) {
@@ -1106,7 +1132,8 @@
     }
 
     function resetHistoryStats() {
-      ['temp-min', 'temp-max', 'temp-avg', 'temp-trend', 'pressure-trend']
+      ['temp-min', 'temp-max', 'temp-avg', 'temp-trend', 'pressure-trend',
+       'humidity-min', 'humidity-max', 'humidity-avg', 'humidity-trend']
         .forEach(id => { document.getElementById(id).textContent = '—'; });
     }
 
@@ -1133,6 +1160,21 @@
         const pressureDelta = pressures[pressures.length - 1] - pressures[0];
         document.getElementById('pressure-trend').textContent =
           `${pressureDelta >= 0 ? '+' : ''}${pressureDelta.toFixed(2)} hPa/${activeHours}h`;
+      }
+
+      const humidities = historyData.map(row => Number(row.humidity)).filter(Number.isFinite);
+      if (humidities.length >= 1) {
+        const humidityMin = Math.min(...humidities);
+        const humidityMax = Math.max(...humidities);
+        const humidityAvg = humidities.reduce((sum, value) => sum + value, 0) / humidities.length;
+        document.getElementById('humidity-min').textContent = `${humidityMin.toFixed(1)}%`;
+        document.getElementById('humidity-max').textContent = `${humidityMax.toFixed(1)}%`;
+        document.getElementById('humidity-avg').textContent = `${humidityAvg.toFixed(1)}%`;
+        if (humidities.length >= 2) {
+          const humidityDelta = humidities[humidities.length - 1] - humidities[0];
+          document.getElementById('humidity-trend').textContent =
+            `${humidityDelta >= 0 ? '+' : ''}${humidityDelta.toFixed(1)}%/${activeHours}h`;
+        }
       }
     }
 
