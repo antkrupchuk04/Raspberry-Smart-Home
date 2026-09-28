@@ -11,10 +11,10 @@ const MODULES = {
   weather: { title: 'Outdoor Weather', accent: 'blue', badge: 'Loading', badgeId: 'weather-status' },
   ai: { title: 'AI Room Analysis', badge: 'Collecting data', badgeId: 'ai-anomaly' },
   system: { title: 'System Status', subtitle: 'Raspberry Pi 5', badge: 'Connecting', badgeId: 'system-summary', footerId: 'system-updated', footer: 'Loading system health…' },
-  motion: { title: 'Motion', subtitle: 'Room 1 · Presence & activity', badge: 'Planned', accent: 'green' },
+  motion: { title: 'Motion', subtitle: 'PIR · Zigbee', badge: 'Connecting', badgeId: 'motion-badge', accent: 'green', footerId: 'motion-updated', footer: 'Loading motion history…' },
   automation: { title: 'Automation', subtitle: 'Rules, modes & notifications', badge: 'Planned' },
   camera: { title: 'Camera', subtitle: 'Devices · Snapshot monitoring', badge: 'Planned' },
-  zigbee: { title: 'Zigbee Devices', subtitle: 'Devices · Wireless network', badge: 'Planned' }
+  zigbee: { title: 'Zigbee Devices', subtitle: 'Devices · Wireless network', badge: 'Connecting', badgeId: 'zigbee-badge' }
 };
 const byId = id => document.getElementById(id);
 const cloneTemplate = id => byId(id).content.cloneNode(true);
@@ -107,6 +107,8 @@ let systemSnapshot = null;
 let systemReceivedAt = null;
 let systemPending = false;
 let systemRequestFailed = false;
+let motionPending = false;
+let motionSignature = null;
 const ONLINE_TIMEOUT_MS = 15000;
 const LATEST_REFRESH_MS = 5000;
 const HISTORY_REFRESH_MS = 10000;
@@ -114,6 +116,8 @@ const ANALYTICS_REFRESH_MS = 30000;
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const SYSTEM_STATUS_REFRESH_MS = 10000;
 const SYSTEM_REQUEST_TIMEOUT_MS = 8000;
+const MOTION_REFRESH_MS = 5000;
+const MOTION_REQUEST_TIMEOUT_MS = 4000;
 const SYSTEM_SERVICE_IDS = ['mqtt', 'database', 'internet', 'esp32', 'api', 'zigbee'];
 const SYSTEM_STATE_LABELS = {
   online: ['ONLINE', 'online'], connected: ['CONNECTED', 'online'], running: ['RUNNING', 'online'],
@@ -195,6 +199,7 @@ async function loadSystemStatus() {
     for (const key of SYSTEM_SERVICE_IDS) {
       setState(`system-${key}`, ...(SYSTEM_STATE_LABELS[data.services[key]?.status] || SYSTEM_STATE_LABELS.unknown));
     }
+    setState('zigbee-coordinator', ...(SYSTEM_STATE_LABELS[data.services.zigbee?.status] || SYSTEM_STATE_LABELS.unknown));
     const alerts = Array.isArray(data.alerts) ? data.alerts.map(alert => alert.message).join(' · ') : '';
     setText('system-updated', `${alerts ? `${alerts} · ` : ''}Updated ${formatTime(data.generated_at)}`);
     setState('connection-badge', 'API: connected', 'online');
@@ -206,6 +211,7 @@ async function loadSystemStatus() {
       byId(`system-${key}`).removeAttribute('title');
     }
     for (const key of SYSTEM_SERVICE_IDS) setState(`system-${key}`, 'UNKNOWN', 'unknown');
+    setState('zigbee-coordinator', 'UNKNOWN', 'unknown');
     setState('system-api', 'UNAVAILABLE', 'error');
     for (const id of ['system-uptime', 'system-card-uptime']) setText(id, '—');
     setText('system-updated', 'System monitoring unavailable. Retrying automatically.');
@@ -213,6 +219,89 @@ async function loadSystemStatus() {
     clearTimeout(timer);
     systemPending = false;
     updateSystemSummary();
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }) : '—';
+}
+
+async function loadMotion() {
+  if (motionPending) return;
+  motionPending = true;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MOTION_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch('/api/motion?hours=24&limit=20', { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (typeof data.configured !== 'boolean' || !data.device || !Array.isArray(data.events)) throw new Error('Incomplete motion status');
+    const sensor = data.sensor;
+    const occupancy = sensor?.occupancy;
+    const state = occupancy === true ? ['MOTION DETECTED', 'warning'] : occupancy === false ? ['CLEAR', 'online'] : ['WAITING FOR REPORT', 'unknown'];
+    setState('motion-state', ...(data.configured ? state : ['NOT CONFIGURED', 'unknown']));
+    setState('motion-badge', data.configured ? 'ZIGBEE PIR' : 'NOT CONFIGURED', data.configured && sensor ? 'online' : 'unknown');
+    setText(byId('motion').querySelector('.card-subtitle'), data.configured ? `${data.device.room} · ${data.device.name}` : 'PIR · Zigbee');
+    const message = !data.configured ? 'No motion sensor configured.' : !sensor ? 'Listening for the first live sensor report.' :
+      'PIR reports motion and clear states. Quiet periods do not indicate an offline sensor.';
+    setText('motion-message', message);
+    setText('motion-last', formatDateTime(sensor?.last_motion_at));
+    setText('motion-count', data.today_count ?? '—');
+    byId('motion-count').title = `Recorded motion detections today${data.day_timezone ? ` (${data.day_timezone})` : ''}; repeated reports are counted once.`;
+    setText('motion-seen', formatDateTime(sensor?.last_seen));
+    byId('motion-state').title = `State reported ${formatDateTime(sensor?.state_reported_at)}`;
+    const battery = numberOrNull(sensor?.battery);
+    const batteryText = battery === null ? '—' : `${battery.toFixed(0)} %`;
+    const batteryState = sensor?.battery_low === true ? 'warning' : 'unknown';
+    const signal = numberOrNull(sensor?.linkquality);
+    const signalText = signal === null ? '—' : `${signal.toFixed(0)} / 255`;
+    for (const prefix of ['motion', 'zigbee']) {
+      setState(`${prefix}-battery`, `${batteryText}${sensor?.battery_low === true ? ' · LOW' : ''}`, batteryState);
+      setText(`${prefix}-signal`, signalText);
+    }
+    setState('zigbee-badge', data.configured ? 'INTEGRATED' : 'NOT CONFIGURED', data.configured ? 'online' : 'unknown');
+    setText('zigbee-message', data.configured ? 'Motion reports are recorded through Zigbee2MQTT.' : 'No motion sensor configured.');
+    setText('zigbee-sensor', data.configured ? data.device.name : '—');
+    setText('zigbee-room', data.configured ? data.device.room : '—');
+    setText('zigbee-seen', formatDateTime(sensor?.last_seen));
+    const signature = JSON.stringify(data.events);
+    if (signature !== motionSignature) {
+      const nodes = data.events.map(event => {
+        const row = document.createElement('li');
+        const time = document.createElement('time');
+        time.dateTime = event.recorded_at;
+        time.textContent = formatDateTime(event.recorded_at);
+        const label = document.createElement('span');
+        label.textContent = event.occupancy ? 'Motion detected' : 'Clear';
+        label.dataset.state = event.occupancy ? 'warning' : 'online';
+        const room = document.createElement('span');
+        room.textContent = event.room;
+        room.className = 'text-secondary';
+        row.append(time, label, room);
+        return row;
+      });
+      byId('motion-events').replaceChildren(...nodes);
+      motionSignature = signature;
+    }
+    byId('motion-empty').hidden = data.events.length > 0;
+    setText('motion-empty', data.configured ? 'No recorded state changes in the last 24 hours.' : 'Configure a motion sensor to record events.');
+    setText('motion-updated', `Latest ${data.events.length} recorded changes · Updated ${formatTime(data.generated_at)}`);
+    delete byId('motion').dataset.stale;
+  } catch (_) {
+    setState('motion-badge', 'UNAVAILABLE', 'error');
+    setState('motion-state', 'UNKNOWN', 'unknown');
+    setState('zigbee-badge', 'UNAVAILABLE', 'error');
+    setText('motion-message', 'Motion monitoring unavailable. Historical values below may be outdated. Retrying automatically.');
+    setText('motion-updated', 'Could not refresh motion events.');
+    setText('zigbee-message', 'Motion reports unavailable. Retrying automatically.');
+    byId('motion').dataset.stale = 'true';
+  } finally {
+    clearTimeout(timer);
+    motionPending = false;
   }
 }
 
@@ -683,6 +772,7 @@ loadHistory();
 loadAnalytics();
 loadWeather();
 loadSystemStatus();
+loadMotion();
 const updateClock = () => {
   setText('local-clock', new Date().toLocaleTimeString());
   updateConnectionState();
@@ -694,4 +784,5 @@ setInterval(loadHistory, HISTORY_REFRESH_MS);
 setInterval(loadAnalytics, ANALYTICS_REFRESH_MS);
 setInterval(loadWeather, WEATHER_REFRESH_MS);
 setInterval(loadSystemStatus, SYSTEM_STATUS_REFRESH_MS);
+setInterval(loadMotion, MOTION_REFRESH_MS);
 setInterval(updateClock, 1000);

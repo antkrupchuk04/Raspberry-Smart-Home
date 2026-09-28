@@ -238,8 +238,15 @@ body.chart-expanded { overflow: hidden; }
 .module-fields { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 8px; }
 .module-fields > div { background: var(--surface-muted); border: 1px solid var(--border); border-radius: var(--badge-radius); padding: 6px 10px; }
 .module-fields dd { color: var(--text-secondary); font-size: 11px; margin-top: 2px; }
+.module-fields dd[data-state="online"] { color: var(--green); }
+.module-fields dd[data-state="warning"] { color: var(--orange); }
+.module-fields dd[data-state="offline"], .module-fields dd[data-state="error"] { color: var(--red); }
 .timeline { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; font-size: 11px; }
 .timeline h3 { margin-bottom: 6px; }
+.motion-events { list-style: none; max-height: 240px; overflow-y: auto; }
+.motion-events li { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.motion-events time { color: var(--text-secondary); }
+.motion-events li:last-child { border-bottom: 0; }
 .camera-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
 .snapshot-placeholder { border: 1px dashed var(--border); border-radius: var(--badge-radius); padding: 16px; display: flex; flex-direction: column; justify-content: center; gap: 8px; min-height: 112px; background: var(--surface-muted); color: var(--text-secondary); }
 .camera-layout .status-list { margin-top: 0; }

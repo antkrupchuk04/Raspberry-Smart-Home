@@ -21,9 +21,12 @@ BMP280 → ESP32 → MQTT (Mosquitto) → Python collector → PostgreSQL → Fa
 - Cached outdoor weather and local AI room analysis
 - Responsive monitoring console with reusable cards and dedicated future-module sections
 - Online/offline indicator based on reading freshness
+- Living room Zigbee PIR motion events, PostgreSQL history, battery and signal diagnostics
 - systemd-managed Mosquitto, PostgreSQL, collector, and API services
 
 See [Dashboard architecture](DASHBOARD.md) for the grid layout, reusable components, responsive behavior, polling intervals and module extension guide. [System Status](SYSTEM_STATUS.md) provides real Pi CPU/RAM/disk/temperature/uptime, MQTT, database, Internet and ESP32 health through `GET /api/system/status`.
+
+See [Motion integration](MOTION.md) for the Tuya TS0202, configuration, event counting and verification commands.
 
 ## Hardware
 
@@ -53,6 +56,8 @@ Planned hardware includes an HC-SR501 PIR sensor and an NVMe SSD.
 | --- | --- |
 | `home/climate/room1/temperature` | Temperature in °C |
 | `home/climate/room1/pressure` | Atmospheric pressure in hPa |
+| `home/climate/room1/humidity` | Relative humidity in % |
+| `zigbee2mqtt/0xa4c138657fddb903` | Living room PIR occupancy, battery and signal JSON |
 
 The ESP32 normally publishes telemetry about every five seconds.
 
@@ -77,6 +82,7 @@ Set the PostgreSQL and MQTT values for the deployment. Do not commit `.env`; it 
 | `GET /api/sensors/latest` | Most recent sensor reading |
 | `GET /api/sensors/history?hours=1` | Sensor history for 1, 6, or 24 hours |
 | `GET /api/system/status` | Cached real host metrics, dependency health and optional Zigbee detection |
+| `GET /api/motion?hours=24&limit=20` | Last reported PIR state, today's detection count and recent events |
 
 Example latest-reading response:
 
@@ -106,8 +112,8 @@ Open the dashboard at `http://<raspberry-pi-ip>:8000/`.
 ## Roadmap
 
 1. Restore and monitor ESP32 telemetry freshness.
-2. Integrate the HC-SR501 PIR sensor.
-3. Add a `motion_events` table and motion dashboard.
+2. Expand motion monitoring to additional rooms and sensors.
+3. Add device availability monitoring for Zigbee sensors.
 4. Send Telegram notifications for motion events.
 5. Research Wi-Fi CSI motion detection.
 6. Add Tailscale remote access, backups, and storage monitoring.

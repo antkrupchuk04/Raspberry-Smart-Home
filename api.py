@@ -1,7 +1,7 @@
 import os
 import logging
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -11,6 +11,7 @@ from psycopg2.extras import RealDictCursor
 from room_analytics import analyze_room
 from weather_service import WeatherUnavailable, get_current_weather
 from system_status import SystemStatusMonitor
+from motion_service import MotionConfig, get_motion_status
 
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ system_monitor = SystemStatusMonitor(
     mqtt_port=int(os.getenv("MQTT_PORT", "1883")),
     zigbee_device=os.getenv("ZIGBEE_SERIAL_DEVICE"),
 )
+motion_config = MotionConfig.from_env()
 
 
 def get_connection():
@@ -87,6 +89,17 @@ def get_latest():
 @app.get("/api/system/status")
 def get_system_status():
     return JSONResponse(system_monitor.get_system_status(), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/motion")
+def get_motion(response: Response, hours: int = Query(default=24, ge=1, le=168),
+               limit: int = Query(default=20, ge=1, le=100)):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return get_motion_status(DB_CONFIG, motion_config, hours, limit)
+    except psycopg2.Error:
+        LOGGER.exception("Motion database query failed")
+        raise HTTPException(status_code=503, detail="Motion monitoring is temporarily unavailable")
 
 
 @app.get("/api/sensors/history")

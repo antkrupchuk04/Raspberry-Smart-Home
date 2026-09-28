@@ -10,8 +10,8 @@
         (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
     } catch (_) { document.documentElement.dataset.theme = 'dark'; }
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=system-1">
-  <script src="/static/app.js?v=system-1" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=motion-1">
+  <script src="/static/app.js?v=motion-1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#environment">Skip to telemetry</a>
@@ -116,9 +116,9 @@
     <dl class="status-list mono"><div><dt>Uptime</dt><dd id="system-card-uptime">—</dd></div><div><dt>Host</dt><dd id="system-hostname">—</dd></div><div><dt>MQTT</dt><dd id="system-mqtt" data-state="unknown">Unknown</dd></div><div><dt>Database</dt><dd id="system-database" data-state="unknown">Unknown</dd></div><div><dt>Internet</dt><dd id="system-internet" data-state="unknown">Unknown</dd></div><div><dt>ESP32</dt><dd id="system-esp32" data-state="unknown">Unknown</dd></div><div><dt>API</dt><dd id="system-api" data-state="unknown">Unknown</dd></div><div><dt>Zigbee coordinator</dt><dd id="system-zigbee" data-state="unknown">Unknown</dd></div></dl>
   </template>
   <template id="motion-body">
-    <p class="empty-state">Module not yet installed.</p>
-    <dl class="module-fields mono"><div><dt>PIR</dt><dd>Not installed</dd></div><div><dt>Wi-Fi CSI</dt><dd>Not installed</dd></div><div><dt>Camera</dt><dd>Not installed</dd></div><div><dt>Last motion</dt><dd>—</dd></div><div><dt>Today's events</dt><dd>—</dd></div></dl>
-    <div class="timeline"><h3 class="detail-label mono">Timeline / Recent events</h3><p class="text-secondary">Motion events will appear here when a sensor is connected.</p></div>
+    <p class="empty-state" id="motion-message" role="status">Loading motion sensor…</p>
+    <dl class="module-fields mono"><div><dt>PIR / Last reported state</dt><dd id="motion-state" data-state="unknown">—</dd></div><div><dt>Wi-Fi CSI</dt><dd>Not installed</dd></div><div><dt>Camera</dt><dd>Not installed</dd></div><div><dt>Last motion</dt><dd id="motion-last">—</dd></div><div><dt>Today's detections</dt><dd id="motion-count">—</dd></div><div><dt>Battery</dt><dd id="motion-battery">—</dd></div><div><dt>Signal / LQI</dt><dd id="motion-signal">—</dd></div><div><dt>Last report</dt><dd id="motion-seen">—</dd></div></dl>
+    <div class="timeline"><h3 class="detail-label mono">Timeline / Last 24 hours</h3><p class="text-secondary" id="motion-empty">Waiting for recorded events.</p><ol class="motion-events mono" id="motion-events" aria-label="Recent motion state changes"></ol></div>
   </template>
   <template id="automation-body">
     <p class="empty-state">Module not yet installed.</p>
@@ -128,9 +128,9 @@
     <div class="camera-layout"><div class="snapshot-placeholder"><span class="detail-label mono">Latest snapshot</span><span>Module not yet installed.</span></div><div><dl class="status-list mono"><div><dt>Snapshot time</dt><dd>—</dd></div><div><dt>Motion detection</dt><dd>Not installed</dd></div></dl><button class="action-btn mono" type="button" disabled title="Available when a camera is installed">Take Snapshot</button></div></div>
   </template>
   <template id="zigbee-body">
-    <p class="empty-state">Module not yet installed.</p>
-    <dl class="module-fields mono"><div><dt>Coordinator</dt><dd>Not installed</dd></div><div><dt>Devices</dt><dd>—</dd></div><div><dt>Bulbs</dt><dd>—</dd></div><div><dt>Switches</dt><dd>—</dd></div><div><dt>Sensors</dt><dd>—</dd></div><div><dt>Signal quality</dt><dd>—</dd></div></dl>
-    <button class="action-btn mono" type="button" disabled title="Available when a Zigbee coordinator is installed">Network Map</button>
+    <p class="empty-state" id="zigbee-message">Loading integrated motion sensor…</p>
+    <dl class="module-fields mono"><div><dt>Coordinator device</dt><dd id="zigbee-coordinator" data-state="unknown">—</dd></div><div><dt>Motion sensor</dt><dd id="zigbee-sensor">—</dd></div><div><dt>Room</dt><dd id="zigbee-room">—</dd></div><div><dt>Battery</dt><dd id="zigbee-battery">—</dd></div><div><dt>Signal / LQI</dt><dd id="zigbee-signal">—</dd></div><div><dt>Last report</dt><dd id="zigbee-seen">—</dd></div></dl>
+    <button class="action-btn mono" type="button" disabled title="Network map integration is planned">Network Map</button>
   </template>
   <footer class="site-footer"><div class="footer-inner mono"><strong>Smart Home Monitoring</strong><span>Room 1 · Live sensor data via FastAPI</span></div></footer>
 </body>

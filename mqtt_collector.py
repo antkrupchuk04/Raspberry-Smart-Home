@@ -1,9 +1,11 @@
 import os
 import logging
 import threading
+from contextlib import closing
 
 import paho.mqtt.client as mqtt
 import psycopg2
+from motion_service import MotionConfig, collect_motion_message
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
@@ -22,6 +24,7 @@ SENSOR_TYPE = "BMP280"
 TOPIC_TEMP = "home/climate/room1/temperature"
 TOPIC_PRESSURE = "home/climate/room1/pressure"
 TOPIC_HUMIDITY = "home/climate/room1/humidity"
+MOTION_CONFIG = MotionConfig.from_env()
 
 # The ESP32 publishes the three measurements as separate MQTT messages. Wait
 # briefly so one database row represents one complete measurement cycle.
@@ -52,7 +55,7 @@ def save_reading():
         save_timer = None
 
     try:
-        with psycopg2.connect(**DB_CONFIG) as conn:
+        with closing(psycopg2.connect(**DB_CONFIG)) as conn, conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -94,12 +97,25 @@ def on_connect(client, userdata, flags, reason_code, properties):
         print("Connected to MQTT broker")
         client.subscribe("home/climate/room1/#")
         print("Subscribed to home/climate/room1/#")
+        if MOTION_CONFIG.configured:
+            client.subscribe(MOTION_CONFIG.topic, qos=1)
+            LOGGER.info("Subscribed to motion sensor in %s", MOTION_CONFIG.room)
     else:
         print(f"MQTT connection failed: {reason_code}")
 
 
 def on_message(client, userdata, msg):
     global temperature, pressure, humidity
+
+    if MOTION_CONFIG.configured and msg.topic == MOTION_CONFIG.topic:
+        try:
+            if collect_motion_message(DB_CONFIG, MOTION_CONFIG, msg):
+                LOGGER.info("Stored motion state change for %s", MOTION_CONFIG.device_id)
+        except (ValueError, UnicodeDecodeError):
+            LOGGER.warning("Invalid motion sensor report ignored")
+        except psycopg2.Error:
+            LOGGER.exception("Failed to store motion sensor report")
+        return
 
     try:
         value = float(msg.payload.decode())
@@ -120,15 +136,14 @@ def on_message(client, userdata, msg):
         LOGGER.warning("Invalid value received on %s: %r", msg.topic, msg.payload)
 
 
-client = mqtt.Client(
-    mqtt.CallbackAPIVersion.VERSION2,
-    client_id="rpi-database-collector"
-)
+def main():
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="rpi-database-collector")
+    client.on_connect = on_connect
+    client.on_message = on_message
+    print("Connecting to MQTT broker...")
+    client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    client.loop_forever()
 
-client.on_connect = on_connect
-client.on_message = on_message
 
-print("Connecting to MQTT broker...")
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
-
-client.loop_forever()
+if __name__ == "__main__":
+    main()

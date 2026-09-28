@@ -51,6 +51,7 @@ The three first-class sensors are configured in `SENSORS`. They use one `sensor-
 | Comfort, insights, anomaly and forecast | `/api/analytics/room` | 30 seconds |
 | Outdoor weather | `/api/weather/current` | 10 minutes |
 | Host and dependency health | `/api/system/status` | 10 seconds |
+| PIR state, diagnostic values and motion timeline | `/api/motion?hours=24&limit=20` | 5 seconds |
 
 System Status has one independent ten-second poller with request timeout and overlap protection. Switching chart metric reuses the fetched history. Range changes cancel the previous request so a slow response cannot replace a newer selection. Duplicate current/history requests cannot overlap. DOM text changes only when the value changes, AI messages are compared before replacing nodes, and unchanged history avoids redundant chart rendering. A `ResizeObserver` resizes the canvas when its container changes, including fullscreen transitions. The existing one-second clock updates freshness locally without another request.
 
@@ -62,7 +63,9 @@ The existing card now uses `/api/system/status` for real CPU, RAM, disk, tempera
 
 AI recommendations use the actual comfort messages returned by the existing analysis endpoint. Its already-implemented anomaly result remains visible. No cloud AI or new recommendation model is introduced.
 
-Motion, automation, camera and Zigbee are compact future-module placeholders. They do not claim devices are installed, display fabricated event counts, or activate hardware. Snapshot and network-map controls remain disabled. The standalone RSSI motion script is separate from the planned Wi-Fi CSI integration.
+Motion now records the Living room Tuya TS0202 through Zigbee2MQTT and the existing collector. Its card displays the last reported PIR state, last motion, today's detections, battery, LQI, last report and a bounded timeline. The Zigbee card shows this integrated sensor and the coordinator's serial-device presence. It does not claim to be a full network inventory. See [Motion integration](MOTION.md) for state-change counting, retained-message handling and collection limits.
+
+Automation and camera remain compact future-module placeholders. Snapshot and network-map controls remain disabled. The standalone RSSI motion script is separate from the planned Wi-Fi CSI integration.
 
 ## Adding rooms and modules
 
