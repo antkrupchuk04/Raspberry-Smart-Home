@@ -6,6 +6,7 @@ from contextlib import closing
 import paho.mqtt.client as mqtt
 import psycopg2
 from motion_service import MotionConfig, collect_motion_message
+from telegram_notifications import TelegramConfig, TelegramNotifier
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
@@ -109,7 +110,8 @@ def on_message(client, userdata, msg):
 
     if MOTION_CONFIG.configured and msg.topic == MOTION_CONFIG.topic:
         try:
-            if collect_motion_message(DB_CONFIG, MOTION_CONFIG, msg):
+            on_motion = userdata.submit_motion if userdata is not None else None
+            if collect_motion_message(DB_CONFIG, MOTION_CONFIG, msg, on_motion=on_motion):
                 LOGGER.info("Stored motion state change for %s", MOTION_CONFIG.device_id)
         except (ValueError, UnicodeDecodeError):
             LOGGER.warning("Invalid motion sensor report ignored")
@@ -137,12 +139,18 @@ def on_message(client, userdata, msg):
 
 
 def main():
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="rpi-database-collector")
+    notifier = TelegramNotifier(TelegramConfig.from_env())
+    notifier.start()
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="rpi-database-collector", userdata=notifier)
     client.on_connect = on_connect
     client.on_message = on_message
     print("Connecting to MQTT broker...")
-    client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    client.loop_forever()
+    try:
+        client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        client.loop_forever()
+    finally:
+        client.disconnect()
+        notifier.close()
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import psycopg2
 from psycopg2 import sql
@@ -43,7 +43,7 @@ class MotionTests(unittest.TestCase):
         with patch.object(motion, "store_report", return_value=True) as store:
             self.assertTrue(motion.collect_motion_message({}, CONFIG,
                 SimpleNamespace(topic=CONFIG.topic, retain=False, payload=b'{"occupancy":true}')))
-            store.assert_called_once_with({}, CONFIG, {"occupancy": True})
+            store.assert_called_once_with({}, CONFIG, {"occupancy": True}, ANY)
 
     def test_disabled_does_not_query_database(self):
         with patch.object(motion, "connect") as connect:

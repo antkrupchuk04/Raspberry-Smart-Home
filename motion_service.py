@@ -1,5 +1,6 @@
 """Persist real Zigbee PIR reports and expose a bounded activity history."""
 import json
+import logging
 import math
 import os
 from contextlib import closing
@@ -11,6 +12,7 @@ from psycopg2.extras import RealDictCursor
 
 MAX_PAYLOAD_BYTES = 8192
 DB_TIMEOUT_MS = 2000
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -132,14 +134,22 @@ def store_report(db_config, config, report, received_at=None):
     return changed
 
 
-def collect_motion_message(db_config, config, message):
+def collect_motion_message(db_config, config, message, on_motion=None):
     if not config.configured or message.topic != config.topic:
         return False
     # A retained snapshot is not a new detection and has no trustworthy arrival time.
     if message.retain:
         return False
     report = parse_motion_report(message.payload)
-    return store_report(db_config, config, report)
+    received_at = datetime.now(timezone.utc)
+    changed = store_report(db_config, config, report, received_at)
+    if changed and report.get("occupancy") is True and on_motion is not None:
+        try:
+            # Storage has committed before any notification is queued.
+            on_motion(config, report, received_at)
+        except Exception:
+            LOGGER.error("Motion notification could not be queued; reading remains stored")
+    return changed
 
 
 def get_motion_status(db_config, config, hours=24, limit=20):

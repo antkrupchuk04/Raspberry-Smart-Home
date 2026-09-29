@@ -22,11 +22,14 @@ BMP280 → ESP32 → MQTT (Mosquitto) → Python collector → PostgreSQL → Fa
 - Responsive monitoring console with reusable cards and dedicated future-module sections
 - Online/offline indicator based on reading freshness
 - Living room Zigbee PIR motion events, PostgreSQL history, battery and signal diagnostics
+- Optional Telegram motion alerts with a persistent cooldown and isolated delivery worker
 - systemd-managed Mosquitto, PostgreSQL, collector, and API services
 
 See [Dashboard architecture](DASHBOARD.md) for the grid layout, reusable components, responsive behavior, polling intervals and module extension guide. [System Status](SYSTEM_STATUS.md) provides real Pi CPU/RAM/disk/temperature/uptime, MQTT, database, Internet and ESP32 health through `GET /api/system/status`.
 
 See [Motion integration](MOTION.md) for the Tuya TS0202, configuration, event counting and verification commands.
+
+See [Telegram notifications](TELEGRAM.md) for bot/chat setup and optional motion alerts.
 
 ## Hardware
 
@@ -114,7 +117,7 @@ Open the dashboard at `http://<raspberry-pi-ip>:8000/`.
 1. Restore and monitor ESP32 telemetry freshness.
 2. Expand motion monitoring to additional rooms and sensors.
 3. Add device availability monitoring for Zigbee sensors.
-4. Send Telegram notifications for motion events.
+4. Add notification schedules and automation rules.
 5. Research Wi-Fi CSI motion detection.
 6. Add Tailscale remote access, backups, and storage monitoring.
 

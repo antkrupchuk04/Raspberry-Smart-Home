@@ -52,7 +52,7 @@ journalctl -u smarthome-collector -f
 
 The API returns `configured`, `device`, `sensor`, `events`, `today_count`, `day_timezone`, `hours` and `generated_at`. A configured sensor with no live readings has `sensor: null`, an empty timeline and zero recorded detections. Query limits are 1–168 hours and 1–100 events. PostgreSQL failures return a safe HTTP 503 response. Responses are not cached by the browser; overlap prevention, request timeouts and changed-value DOM updates keep polling lightweight.
 
-The Motion card shows state, last motion, today's count, battery, LQI and last report, plus the latest 20 recorded changes within 24 hours. Existing dark/light themes and responsive module layout are preserved. Wi-Fi CSI and camera remain uninstalled. No automations, notifications, device renaming or pairing changes are made by this integration.
+The Motion card shows state, last motion, today's count, battery, LQI and last report, plus the latest 20 recorded changes within 24 hours. Existing dark/light themes and responsive module layout are preserved. Wi-Fi CSI and camera remain uninstalled. Optional [Telegram notifications](TELEGRAM.md) can alert on newly stored detections without blocking collection. No automations, device renaming or pairing changes are made by this integration.
 
 ## Tests
 
