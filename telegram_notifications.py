@@ -1,5 +1,6 @@
 """Optional Telegram alerts; network calls run outside the MQTT callback."""
 import hashlib
+from html import escape
 import json
 import logging
 import math
@@ -28,6 +29,8 @@ class TelegramConfig:
     chat_id: str = field(default="", repr=False)
     cooldown_seconds: int = 60
     state_path: Path = field(default_factory=lambda: Path.home() / ".local/state/smarthome/telegram-notifications.json")
+    sensor_label: str = ""
+    location_label: str = ""
 
     @classmethod
     def from_env(cls):
@@ -40,7 +43,9 @@ class TelegramConfig:
             cooldown = 60
         return cls(os.getenv("TELEGRAM_ENABLED", "false").lower() in ("true", "1", "yes"),
                    os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip(),
-                   cooldown, Path(os.getenv("TELEGRAM_STATE_FILE", str(cls().state_path))))
+                   cooldown, Path(os.getenv("TELEGRAM_STATE_FILE", str(cls().state_path))),
+                   os.getenv("TELEGRAM_SENSOR_LABEL", "").strip(),
+                   os.getenv("TELEGRAM_LOCATION_LABEL", "").strip())
 
     @property
     def ready(self):
@@ -48,12 +53,18 @@ class TelegramConfig:
                     and re.fullmatch(r"-?[0-9]+", self.chat_id))
 
 
-def format_motion_message(config, report, received_at):
-    lines = [f"Motion detected — {config.room[:200]}", f"Sensor: {config.name[:200]}",
-             f"Time: {received_at.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}"]
-    if report.get("battery") is not None:
-        lines.append(f"Battery: {report['battery']:g}%")
-    return "\n".join(lines)
+def format_motion_message(config, report, received_at, *, sensor_label="", location_label=""):
+    detected = report.get("occupancy") is True
+    status = "Motion detected" if detected else "Motion cleared"
+    icon = "🚨" if detected else "✅"
+    location = escape((location_label or config.room)[:200])
+    sensor = escape((sensor_label or config.name)[:200])
+    local_time = received_at.astimezone().strftime("%d.%m.%Y, %H:%M")
+    return (f"{icon} <b>{status}</b>\n\n"
+            f"📍 Location: {location}\n"
+            f"📡 Sensor: {sensor}\n"
+            f"🕒 Time: {local_time}\n"
+            f"⚡ Status: {status}")
 
 
 class TelegramNotifier:
@@ -65,6 +76,8 @@ class TelegramNotifier:
         self._thread = None
         self._queued_at = {}
         self._attempted_at = {}
+        self._open_alerts = {}
+        self._scheduled_state = {}
         self._retry_until = 0
         self._scope = hashlib.sha256((config.token + ":" + config.chat_id).encode()).hexdigest()
         if config.ready:
@@ -82,6 +95,10 @@ class TelegramNotifier:
                                   if type(value) in (float, int) and math.isfinite(value)}
             retry = data.get("retry_until", 0)
             self._retry_until = float(retry) if type(retry) in (float, int) and math.isfinite(retry) else 0
+            open_alerts = data.get("open_alerts", {})
+            if not isinstance(open_alerts, dict):
+                raise ValueError
+            self._open_alerts = {str(key): True for key, value in open_alerts.items() if value is True}
         except FileNotFoundError:
             pass
         except (OSError, ValueError, TypeError, AttributeError):
@@ -94,7 +111,7 @@ class TelegramNotifier:
         try:
             with os.fdopen(fd, "w") as file:
                 json.dump({"scope": self._scope, "attempted_at": self._attempted_at,
-                           "retry_until": self._retry_until}, file)
+                           "retry_until": self._retry_until, "open_alerts": self._open_alerts}, file)
                 file.flush()
                 os.fsync(file.fileno())
             os.replace(temporary, path)
@@ -118,7 +135,8 @@ class TelegramNotifier:
             self._thread.join(timeout=REQUEST_TIMEOUT_SECONDS + 1)
 
     def submit_motion(self, motion_config, report, received_at):
-        if not self.config.ready or self._stop.is_set() or report.get("occupancy") is not True:
+        occupancy = report.get("occupancy")
+        if not self.config.ready or self._stop.is_set() or type(occupancy) is not bool:
             return False
         now = time.time()
         age = now - received_at.timestamp()
@@ -127,33 +145,52 @@ class TelegramNotifier:
         device = motion_config.device_id
         with self._lock:
             previous = max(self._queued_at.get(device, 0), self._attempted_at.get(device, 0))
-            if now < self._retry_until or now - previous < self.config.cooldown_seconds:
+            if now < self._retry_until:
                 return False
+            if occupancy:
+                if now - previous < self.config.cooldown_seconds:
+                    return False
+            elif not self._scheduled_state.get(device, self._open_alerts.get(device, False)):
+                return False
+            message = format_motion_message(motion_config, report, received_at,
+                                            sensor_label=self.config.sensor_label,
+                                            location_label=self.config.location_label)
             try:
-                self._queue.put_nowait((device, format_motion_message(motion_config, report, received_at), received_at))
+                self._queue.put_nowait((device, message, received_at, occupancy))
             except queue.Full:
                 LOGGER.warning("Telegram notification queue full; alert skipped")
                 return False
-            self._queued_at[device] = now
+            if occupancy:
+                self._queued_at[device] = now
+            self._scheduled_state[device] = occupancy
         return True
 
-    def _deliver(self, device, message, received_at):
+    def _deliver(self, device, message, received_at, occupancy=True):
         now = time.time()
         if now - received_at.timestamp() > MAX_EVENT_AGE_SECONDS or now < self._retry_until:
             return
         # Record the attempt before network I/O so restarts/timeouts cannot create a burst.
         with self._lock:
-            self._attempted_at[device] = now
+            if occupancy:
+                self._attempted_at[device] = now
+            elif not self._open_alerts.pop(device, False):
+                # A queued detection may have failed: never send an orphan clear.
+                return
         self._save_state()
         request = urllib.request.Request(
             f"https://api.telegram.org/bot{self.config.token}/sendMessage",
-            data=json.dumps({"chat_id": self.config.chat_id, "text": message}).encode(),
+            data=json.dumps({"chat_id": self.config.chat_id, "text": message, "parse_mode": "HTML"}).encode(),
             headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 result = json.load(response)
             if result.get("ok") is True:
-                LOGGER.info("Telegram motion notification sent for %s", device)
+                if occupancy:
+                    with self._lock:
+                        self._open_alerts[device] = True
+                    self._save_state()
+                LOGGER.info("Telegram motion notification sent for %s (%s)",
+                            device, "detected" if occupancy else "cleared")
             else:
                 LOGGER.warning("Telegram rejected a notification")
         except urllib.error.HTTPError as error:

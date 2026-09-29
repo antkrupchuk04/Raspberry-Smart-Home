@@ -3,7 +3,9 @@ import sys
 import unittest
 from datetime import datetime, timedelta, timezone
 
-sys.path.insert(0, "/home/anton/smarthome")
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from room_analytics import (  # noqa: E402
     analyze_records,

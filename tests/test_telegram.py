@@ -6,6 +6,7 @@ import tempfile
 import threading
 import unittest
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import urllib.error
@@ -38,17 +39,23 @@ class TelegramTests(unittest.TestCase):
 
     def test_config_validation_and_secret_repr(self):
         with patch.dict(os.environ, {"TELEGRAM_COOLDOWN_SECONDS": "NaN", "TELEGRAM_ENABLED": "true",
-                                     "TELEGRAM_BOT_TOKEN": TOKEN, "TELEGRAM_CHAT_ID": "123"}):
+                                     "TELEGRAM_BOT_TOKEN": TOKEN, "TELEGRAM_CHAT_ID": "123",
+                                     "TELEGRAM_SENSOR_LABEL": "motion-room1",
+                                     "TELEGRAM_LOCATION_LABEL": "Living Room"}):
             config = TelegramConfig.from_env()
         self.assertEqual(config.cooldown_seconds, 60)
         self.assertTrue(config.ready)
         self.assertNotIn(TOKEN, repr(config))
+        self.assertEqual(config.sensor_label, "motion-room1")
+        self.assertEqual(config.location_label, "Living Room")
 
-    def test_clear_and_stale_events_are_ignored(self):
+    def test_unmatched_clear_invalid_and_stale_events_are_ignored(self):
         notifier = TelegramNotifier(self.config)
         self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": False}, self.now))
         self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": True}, self.now - timedelta(minutes=5)))
         self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": True}, self.now + timedelta(minutes=5)))
+        for occupancy in (None, 1, 0, "false"):
+            self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": occupancy}, self.now))
         self.assertTrue(notifier._queue.empty())
 
     def test_per_device_cooldown(self):
@@ -67,12 +74,94 @@ class TelegramTests(unittest.TestCase):
             notifier._deliver(DEVICE.device_id, "Motion detected", self.now)
         sent = request.call_args.args[0]
         self.assertEqual(sent.get_method(), "POST")
-        self.assertEqual(json.loads(sent.data), {"chat_id": "123", "text": "Motion detected"})
+        self.assertEqual(json.loads(sent.data), {"chat_id": "123", "text": "Motion detected", "parse_mode": "HTML"})
         self.assertEqual(request.call_args.kwargs["timeout"], 5)
         self.assertNotIn(TOKEN, self.config.state_path.read_text())
         self.assertEqual(self.config.state_path.stat().st_mode & 0o777, 0o600)
         restarted = TelegramNotifier(self.config)
         self.assertFalse(restarted.submit_motion(DEVICE, {"occupancy": True}, self.now))
+        self.assertTrue(restarted.submit_motion(DEVICE, {"occupancy": False}, self.now))
+
+    def test_clear_bypasses_cooldown_and_follows_pending_detection(self):
+        notifier = TelegramNotifier(replace(self.config, sensor_label="motion-room1", location_label="Living Room"))
+        with patch("telegram_notifications.urllib.request.urlopen", side_effect=lambda *_args, **_kwargs: io.BytesIO(b'{"ok":true}')) as request:
+            self.assertTrue(notifier.submit_motion(DEVICE, {"occupancy": True}, self.now))
+            # Clear can arrive while detection is queued or in flight.
+            self.assertTrue(notifier.submit_motion(DEVICE, {"occupancy": False}, self.now))
+            self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": False}, self.now))
+            notifier._deliver(*notifier._queue.get_nowait())
+            notifier._deliver(*notifier._queue.get_nowait())
+        messages = [json.loads(call.args[0].data)["text"] for call in request.call_args_list]
+        self.assertEqual(len(messages), 2)
+        self.assertIn("🚨 <b>Motion detected</b>", messages[0])
+        self.assertIn("✅ <b>Motion cleared</b>", messages[1])
+        self.assertIn("📍 Location: Living Room", messages[1])
+        self.assertIn("📡 Sensor: motion-room1", messages[1])
+        self.assertFalse(TelegramNotifier(self.config).submit_motion(DEVICE, {"occupancy": False}, self.now))
+
+    def test_suppressed_detection_does_not_generate_extra_clear(self):
+        notifier = TelegramNotifier(self.config)
+        with patch("telegram_notifications.urllib.request.urlopen", side_effect=lambda *_args, **_kwargs: io.BytesIO(b'{"ok":true}')) as request:
+            for occupancy in (True, False):
+                self.assertTrue(notifier.submit_motion(DEVICE, {"occupancy": occupancy}, self.now))
+                notifier._deliver(*notifier._queue.get_nowait())
+            self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": True}, self.now))
+            self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": False}, self.now))
+        self.assertEqual(request.call_count, 2)
+
+    def test_clear_does_not_reset_detection_cooldown(self):
+        notifier = TelegramNotifier(self.config)
+        with patch("telegram_notifications.urllib.request.urlopen", side_effect=lambda *_args, **_kwargs: io.BytesIO(b'{"ok":true}')):
+            for seconds, occupancy in ((0, True), (50, False), (60, True), (61, False)):
+                event_time = self.now + timedelta(seconds=seconds)
+                with patch("telegram_notifications.time.time", return_value=event_time.timestamp()):
+                    self.assertTrue(notifier.submit_motion(DEVICE, {"occupancy": occupancy}, event_time))
+                    notifier._deliver(*notifier._queue.get_nowait())
+
+    def test_failed_detection_does_not_send_queued_clear(self):
+        notifier = TelegramNotifier(self.config)
+        notifier.submit_motion(DEVICE, {"occupancy": True}, self.now)
+        notifier.submit_motion(DEVICE, {"occupancy": False}, self.now)
+        with patch("telegram_notifications.urllib.request.urlopen", side_effect=OSError) as request:
+            notifier._deliver(*notifier._queue.get_nowait())
+            notifier._deliver(*notifier._queue.get_nowait())
+        self.assertEqual(request.call_count, 1)
+        self.assertFalse(TelegramNotifier(self.config).submit_motion(DEVICE, {"occupancy": False}, self.now))
+
+    def test_rejected_detection_does_not_open_alert(self):
+        notifier = TelegramNotifier(self.config)
+        with patch("telegram_notifications.urllib.request.urlopen", return_value=io.BytesIO(b'{"ok":false}')):
+            notifier._deliver(DEVICE.device_id, "Motion detected", self.now)
+        self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": False}, self.now))
+
+    def test_clear_failure_is_not_retried_after_restart(self):
+        notifier = TelegramNotifier(self.config)
+        with patch("telegram_notifications.urllib.request.urlopen", return_value=io.BytesIO(b'{"ok":true}')):
+            notifier._deliver(DEVICE.device_id, "Motion detected", self.now)
+        with patch("telegram_notifications.urllib.request.urlopen", side_effect=OSError):
+            notifier._deliver(DEVICE.device_id, "Motion cleared", self.now, False)
+        restarted = TelegramNotifier(self.config)
+        self.assertFalse(restarted.submit_motion(DEVICE, {"occupancy": False}, self.now))
+
+    def test_old_cooldown_state_loads_without_open_alerts(self):
+        notifier = TelegramNotifier(self.config)
+        self.config.state_path.write_text(json.dumps({"scope": notifier._scope,
+            "attempted_at": {DEVICE.device_id: self.now.timestamp()}, "retry_until": 0}))
+        restarted = TelegramNotifier(self.config)
+        self.assertFalse(restarted.submit_motion(DEVICE, {"occupancy": True}, self.now))
+        self.assertFalse(restarted.submit_motion(DEVICE, {"occupancy": False}, self.now))
+
+    def test_different_chat_does_not_inherit_open_alert(self):
+        notifier = TelegramNotifier(self.config)
+        with patch("telegram_notifications.urllib.request.urlopen", return_value=io.BytesIO(b'{"ok":true}')):
+            notifier._deliver(DEVICE.device_id, "Motion detected", self.now)
+        other_chat = TelegramNotifier(replace(self.config, chat_id="456"))
+        self.assertFalse(other_chat.submit_motion(DEVICE, {"occupancy": False}, self.now))
+
+    def test_stale_clear_does_not_send(self):
+        notifier = TelegramNotifier(self.config)
+        notifier.submit_motion(DEVICE, {"occupancy": True}, self.now)
+        self.assertFalse(notifier.submit_motion(DEVICE, {"occupancy": False}, self.now - timedelta(minutes=5)))
 
     def test_network_failure_does_not_log_token_or_retry(self):
         notifier = TelegramNotifier(self.config)
@@ -120,12 +209,24 @@ class TelegramTests(unittest.TestCase):
                 release.set()
                 notifier.close()
 
-    def test_message_contains_real_metadata_and_preserves_zero_battery(self):
-        message = format_motion_message(DEVICE, {"battery": 0}, self.now)
-        self.assertIn("Living room", message)
-        self.assertIn("Tuya TS0202", message)
-        self.assertIn("Battery: 0%", message)
-        self.assertIn("Time:", message)
+    def test_exact_message_format_for_both_states(self):
+        local_time = datetime(2026, 9, 29, 20, 26).astimezone()
+        for occupancy, icon, status in ((True, "🚨", "Motion detected"), (False, "✅", "Motion cleared")):
+            message = format_motion_message(DEVICE, {"occupancy": occupancy, "battery": 0}, local_time,
+                                           sensor_label="motion-room1", location_label="Living Room")
+            self.assertEqual(message, f"{icon} <b>{status}</b>\n\n"
+                "📍 Location: Living Room\n📡 Sensor: motion-room1\n"
+                f"🕒 Time: 29.09.2026, 20:26\n⚡ Status: {status}")
+
+    def test_labels_fall_back_to_metadata_and_escape_html(self):
+        device = replace(DEVICE, name="Sensor <one>", room="Living & Dining")
+        message = format_motion_message(device, {"occupancy": True}, self.now)
+        self.assertIn("📍 Location: Living &amp; Dining", message)
+        self.assertIn("📡 Sensor: Sensor &lt;one&gt;", message)
+        message = format_motion_message(device, {"occupancy": False}, self.now,
+                                       sensor_label="<b>sensor</b>", location_label="Room & hall")
+        self.assertIn("📍 Location: Room &amp; hall", message)
+        self.assertIn("📡 Sensor: &lt;b&gt;sensor&lt;/b&gt;", message)
 
 
 class MotionNotificationHookTests(unittest.TestCase):
@@ -139,14 +240,22 @@ class MotionNotificationHookTests(unittest.TestCase):
             collect_motion_message({}, DEVICE, self.message(), lambda *_: actions.append("notified"))
         self.assertEqual(actions, ["stored", "notified"])
 
-    def test_repeated_clear_and_retained_reports_never_notify(self):
+    def test_repeated_and_retained_reports_never_notify(self):
         notify = Mock()
         with patch("motion_service.store_report", return_value=False):
             collect_motion_message({}, DEVICE, self.message(), notify)
-        with patch("motion_service.store_report", return_value=True):
             collect_motion_message({}, DEVICE, self.message(False), notify)
+        with patch("motion_service.store_report", return_value=True):
             collect_motion_message({}, DEVICE, self.message(retain=True), notify)
+            collect_motion_message({}, DEVICE, self.message(False, retain=True), notify)
         notify.assert_not_called()
+
+    def test_clear_transition_notifies_after_commit(self):
+        actions = []
+        with patch("motion_service.store_report", side_effect=lambda *_: actions.append("stored") or True):
+            collect_motion_message({}, DEVICE, self.message(False),
+                                   lambda config, report, when: actions.append(report["occupancy"]))
+        self.assertEqual(actions, ["stored", False])
 
     def test_failed_database_write_never_notifies(self):
         notify = Mock()

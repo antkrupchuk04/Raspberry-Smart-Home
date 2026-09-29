@@ -143,7 +143,7 @@ def collect_motion_message(db_config, config, message, on_motion=None):
     report = parse_motion_report(message.payload)
     received_at = datetime.now(timezone.utc)
     changed = store_report(db_config, config, report, received_at)
-    if changed and report.get("occupancy") is True and on_motion is not None:
+    if changed and type(report.get("occupancy")) is bool and on_motion is not None:
         try:
             # Storage has committed before any notification is queued.
             on_motion(config, report, received_at)
