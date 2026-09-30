@@ -167,6 +167,7 @@ class SystemTopology {
     }
     for (const [key, group] of this.groups) {
       if (!group.list.childElementCount) { this.observer.unobserve(group.section); group.section.remove(); group.trunk.remove(); this.groups.delete(key); }
+      else this.attr(group.section, 'data-multiple', String(group.list.childElementCount > 1));
     }
     if (this.selectedId && !keep.has(this.selectedId)) this.closeDetails();
     const edgeIds = new Set();
@@ -184,6 +185,7 @@ class SystemTopology {
     const empty = this.board.querySelector('.map-empty');
     empty.hidden = data.nodes.some(node => node.type !== 'hub');
     this.text(empty, data.nodes.length ? 'No room devices configured yet.' : 'No device information is available.');
+    this.text(this.root.querySelector('#topology-device-count'), `${data.nodes.length} ${data.nodes.length === 1 ? 'device' : 'devices'}`);
     this.tick();
     this.scheduleLayout();
   }
@@ -232,21 +234,20 @@ class SystemTopology {
     const summary = this.root.querySelector('#topology-summary');
     this.text(summary, label);
     this.state(summary, stale || partial || awaiting ? 'warning' : ({ healthy: 'online', warning: 'warning', degraded: 'error' })[systemStatus] || 'unknown');
-    this.text(this.root.querySelector('#topology-message'), stale ? 'Live updates are unavailable. Showing older data while we reconnect.' : partial ?
-      'Some device information is unavailable. Select a device to see what is known.' : 'Select a device to see its readings and health.');
+    const message = this.root.querySelector('#topology-message');
+    message.hidden = !stale && !partial;
+    this.text(message, stale ? 'Live updates are unavailable. Showing older data while we reconnect.' : partial ?
+      'Some device information is unavailable. Select a device to see what is known.' : '');
     this.text(this.root.querySelector('#topology-updated'), `Updated ${new Date(this.snapshot.generated_at).toLocaleTimeString()} · Refresh 10s${stale ? ' · Older snapshot' : ''}`);
-    for (const edge of this.snapshot.links) {
-      const status = stale ? 'stale' : edge.status === 'online' && (expiredIds.has(edge.source) || expiredIds.has(edge.target)) ? 'stale' : edge.status;
-      const path = this.edges.get(edge.id);
-      this.state(path, this.color(status));
-      this.attr(path, 'data-link-state', status);
-    }
+    // Connections describe topology, not radio/transport health. Node indicators
+    // retain the backend's operational status and freshness semantics.
     if (this.selectedId) this.updateDetails();
     this.onStatus({ snapshot: this.snapshot, stale });
   }
 
   select(id) {
     if (!this.nodes.has(id)) return;
+    if (this.selectedId === id) { this.closeDetails(); return; }
     this.selectedId = id;
     this.panel.hidden = false;
     this.workspace.dataset.detailsOpen = 'true';
@@ -306,6 +307,22 @@ class SystemTopology {
     this.layoutFrame = requestAnimationFrame(() => { this.layoutFrame = null; this.layout(); });
   }
 
+  roundedPath(points) {
+    const clean = points.filter((point, index) => !index || point[0] !== points[index - 1][0] || point[1] !== points[index - 1][1]);
+    if (!clean.length) return '';
+    let d = `M ${clean[0].join(' ')}`;
+    for (let index = 1; index < clean.length - 1; index++) {
+      const previous = clean[index - 1], corner = clean[index], next = clean[index + 1];
+      const before = Math.hypot(corner[0] - previous[0], corner[1] - previous[1]);
+      const after = Math.hypot(next[0] - corner[0], next[1] - corner[1]);
+      const radius = Math.min(10, before / 2, after / 2);
+      const entry = corner.map((value, axis) => value + (previous[axis] - value) * radius / before);
+      const exit = corner.map((value, axis) => value + (next[axis] - value) * radius / after);
+      d += ` L ${entry.join(' ')} Q ${corner.join(' ')} ${exit.join(' ')}`;
+    }
+    return clean.length > 1 ? `${d} L ${clean.at(-1).join(' ')}` : d;
+  }
+
   layout() {
     if (!this.snapshot) return;
     const box = this.board.getBoundingClientRect();
@@ -318,12 +335,25 @@ class SystemTopology {
     const hubNode = this.snapshot.nodes.find(node => node.type === 'hub');
     const hub = hubNode && this.nodes.get(hubNode.id);
     const hubRect = hub ? rect(hub) : null;
+    const firstGroup = this.groups.values().next().value;
+    const firstTop = firstGroup ? rect(firstGroup.section).top : 0;
+    const stacked = [...this.groups.values()].some(group => Math.abs(rect(group.section).top - firstTop) > 1);
+    const splitY = hubRect ? hubRect.bottom + 30 : 0;
+    // Wrapped groups branch from a shared outside gutter, never from a preceding
+    // device. In a single row each protocol connects directly beneath the hub.
+    const gutter = 8;
     for (const group of this.groups.values()) {
-      const g = rect(group.section);
-      const last = group.list.lastElementChild;
-      const bottom = last ? rect(last).y : g.top;
-      // Neutral shared infrastructure, with health shown on each device's branch.
-      const d = hubRect ? `M ${hubRect.x} ${hubRect.bottom} V ${hubRect.bottom + 28} H ${g.left + 10} V ${bottom}` : '';
+      const heading = rect(group.heading);
+      const points = hubRect ? [[hubRect.x, hubRect.bottom + 8], [hubRect.x, splitY]] : [];
+      if (stacked && hubRect && rect(group.section).top > firstTop + 1) points.push([gutter, splitY], [gutter, heading.top - 18], [heading.x, heading.top - 18]);
+      else if (hubRect) points.push([heading.x, splitY]);
+      if (hubRect) points.push([heading.x, heading.top - 6]);
+      let d = this.roundedPath(points);
+      if (hubRect && group.list.childElementCount > 1) {
+        const lastIcon = rect(group.list.lastElementChild.querySelector('.map-node-icon'));
+        const spine = rect(group.section).left + 20;
+        d += ' ' + this.roundedPath([[heading.x, heading.bottom + 6], [heading.x, heading.bottom + 18], [spine, heading.bottom + 18], [spine, lastIcon.top - 20]]);
+      }
       this.attr(group.trunk, 'd', d);
     }
     for (const edge of this.snapshot.links) {
@@ -332,8 +362,10 @@ class SystemTopology {
       const group = leaf && this.groups.get(edge.transport || edge.protocol || 'other');
       let d = '';
       if (hubRect && leaf && group) {
-        const r = rect(leaf), g = rect(group.section);
-        d = `M ${g.left + 10} ${r.y} H ${r.left}`;
+        const icon = rect(leaf.querySelector('.map-node-icon')), heading = rect(group.heading);
+        const points = group.list.childElementCount === 1 ? [[heading.x, heading.bottom + 6], [icon.x, icon.top - 6]] :
+          [[rect(group.section).left + 20, icon.top - 20], [icon.x, icon.top - 20], [icon.x, icon.top - 6]];
+        d = this.roundedPath(points);
       }
       this.attr(this.edges.get(edge.id), 'd', d);
     }

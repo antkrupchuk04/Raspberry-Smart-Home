@@ -14,13 +14,9 @@ function setTheme(theme) {
 
 function updatePageStatus({ snapshot, stale }) {
   const hub = snapshot?.nodes.find(node => node.type === 'hub');
-  const label = stale ? 'UNAVAILABLE' : (hub?.status_label || 'Unknown').toUpperCase();
-  const state = stale ? 'unknown' : topologyBoard.color(hub?.status);
   const badge = document.getElementById('connection-badge');
   topologyBoard.text(badge, stale ? 'API: unavailable' : 'API: connected');
   topologyBoard.state(badge, stale ? 'error' : 'online');
-  topologyBoard.text(document.getElementById('overall-status-text'), label);
-  topologyBoard.state(document.getElementById('overall-status'), state === 'error' ? 'offline' : state);
   const uptime = hub?.details.find(field => field.key === 'uptime')?.value;
   topologyBoard.text(document.getElementById('system-uptime'), stale ? null : uptime);
 }

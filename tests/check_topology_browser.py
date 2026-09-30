@@ -49,18 +49,32 @@ def main():
         assert set(fixture['api_paths']) == {'/api/topology'}
         assert page.locator('.top-nav [aria-current="page"]').inner_text() == 'Smart Home Map'
         assert page.locator('#system-uptime').inner_text() == '1d 2h'
-        assert page.locator('#overall-status-text').inner_text() == 'ONLINE'
+        assert page.locator('#topology-device-count').inner_text() == '3 devices'
+        assert page.locator('.topology-legend').count() == 0
+        assert not page.locator('#topology-message').is_visible()
         assert node('esp32-room1').locator('[data-field="status"]').inner_text() == 'Online'
         assert node('motion-room1').locator('[data-field="status"]').inner_text() == 'Availability unknown'
         assert 'Motion detected' in node('motion-room1').inner_text()
         assert '20.8' not in node('esp32-room1').inner_text()
         assert not panel.is_visible()
-        assert page.locator('.topology-path-group path[data-link-state="online"]').count() == 1
-        assert page.locator('.topology-path-group path[data-link-state="unknown"]').count() == 1
+        assert page.locator('.topology-path-group path[data-link-state]').count() == 0
 
         def geometry():
-            page.evaluate('topologyBoard.layout()')
+            page.evaluate('''async () => {
+                await new Promise(requestAnimationFrame);
+                await Promise.all(document.querySelector('.smart-map-workspace').getAnimations().map(a => a.finished.catch(() => {})));
+                topologyBoard.layout();
+            }''')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'horizontal overflow'
+            assert page.evaluate('''() => {
+                const board = topologyBoard.board.getBoundingClientRect();
+                const bounds = [...topologyBoard.nodes.values()].map(node => node.getBoundingClientRect());
+                const hub = document.querySelector('[data-type=hub]').getBoundingClientRect();
+                const top = Math.min(...bounds.map(rect => rect.top));
+                const bottom = Math.max(...bounds.map(rect => rect.bottom));
+                return Math.abs((top + bottom) / 2 - (board.top + board.bottom) / 2) < 1 &&
+                       Math.abs((hub.left + hub.right) / 2 - (board.left + board.right) / 2) < 1;
+            }'''), 'complete topology must be centered within the available canvas'
             # Sample SVG branches/trunks: none crosses another device card.
             assert page.evaluate('''() => {
                 const box = document.querySelector('.topology-board').getBoundingClientRect();
@@ -75,9 +89,43 @@ def main():
                     return true;
                 });
             }'''), 'connection crosses a device'
+            assert page.evaluate('''() => {
+                const box = topologyBoard.board.getBoundingClientRect();
+                const hub = document.querySelector('[data-type=hub]').getBoundingClientRect();
+                const near = (a, b) => Math.abs(a - b) < 1;
+                return [...topologyBoard.groups.values()].every(group => {
+                    const label = group.heading.getBoundingClientRect();
+                    const start = group.trunk.getPointAtLength(0);
+                    const headingPath = group.trunk.getAttribute('d').split(' M ')[0];
+                    const probe = group.trunk.cloneNode();
+                    probe.setAttribute('d', headingPath);
+                    const end = probe.getPointAtLength(probe.getTotalLength());
+                    return near(start.x + box.left, (hub.left + hub.right) / 2) && near(start.y + box.top, hub.bottom + 8) &&
+                           near(end.x + box.left, (label.left + label.right) / 2) && near(end.y + box.top, label.top - 6);
+                }) && topologyBoard.snapshot.links.every(edge => {
+                    const leafId = edge.source === 'raspberry' ? edge.target : edge.source;
+                    const icon = topologyBoard.nodes.get(leafId).querySelector('.map-node-icon').getBoundingClientRect();
+                    const path = topologyBoard.edges.get(edge.id), end = path.getPointAtLength(path.getTotalLength());
+                    return near(end.x + box.left, (icon.left + icon.right) / 2) && near(end.y + box.top, icon.top - 6);
+                });
+            }'''), 'branch does not connect hub, protocol label and target icon'
+            assert page.evaluate('''() => [...document.querySelectorAll('.topology-paths path')].every(path => {
+                const style = getComputedStyle(path);
+                return style.stroke === getComputedStyle(document.querySelector('.map-group-title')).color && style.strokeDasharray === 'none';
+            })'''), 'topology lines must remain neutral and solid'
+            for identifier in ('raspberry', 'esp32-room1', 'motion-room1'):
+                assert node(identifier).evaluate("e => getComputedStyle(e).borderTopWidth === '0px' && getComputedStyle(e).backgroundColor === 'rgba(0, 0, 0, 0)'")
 
-        for width in (1440, 1024, 1000, 768, 390, 320):
-            page.set_viewport_size({'width': width, 'height': 1000})
+        def screenshot(width, height, theme, state):
+            output = os.getenv('TOPOLOGY_SCREENSHOT_DIR')
+            if output and width in (1920, 1440, 768, 390):
+                Path(output).mkdir(parents=True, exist_ok=True)
+                page.locator('.site-header').evaluate("e => e.style.visibility = 'hidden'")
+                page.locator('#topology').screenshot(path=str(Path(output) / f'map-{width}x{height}-{theme}-{state}.png'), animations='disabled')
+                page.locator('.site-header').evaluate("e => e.style.visibility = ''")
+
+        for width, height in ((1920,1080), (1440,900), (1024,900), (1000,900), (900,900), (768,1024), (600,900), (390,844), (320,844)):
+            page.set_viewport_size({'width': width, 'height': height})
             for theme in ('dark', 'light'):
                 page.evaluate('theme => setTheme(theme)', theme)
                 geometry()
@@ -89,7 +137,15 @@ def main():
                     assert esp['x'] + esp['width'] < motion['x']
                 else:
                     assert esp['y'] + esp['height'] < motion['y']
+                full_width = page.locator('.topology-board').bounding_box()['width']
+                assert page.evaluate('''() => {
+                    const hub = document.querySelector('[data-type=hub]').getBoundingClientRect();
+                    const board = document.querySelector('.topology-board').getBoundingClientRect();
+                    return Math.abs((hub.left + hub.right) / 2 - (board.left + board.right) / 2) < 1;
+                }''')
+                screenshot(width, height, theme, 'closed')
                 node('motion-room1').click()
+                geometry()
                 assert panel.is_visible()
                 assert panel.locator('[data-key="occupancy"] dd').inner_text() == 'Motion detected'
                 expected = 'rgb(210, 153, 34)' if theme == 'dark' else 'rgb(154, 103, 0)'
@@ -98,22 +154,23 @@ def main():
                 board = page.locator('.topology-board').bounding_box()
                 if width >= 900:
                     assert detail_box['x'] >= board['x'] + board['width']
+                    assert board['width'] < full_width
                 else:
                     assert detail_box['y'] >= board['y'] + board['height']
                 geometry()
-                output = os.getenv('TOPOLOGY_SCREENSHOT_DIR')
-                if output and width in (1440, 390):
-                    Path(output).mkdir(parents=True, exist_ok=True)
-                    page.locator('.site-header').evaluate("e => e.style.visibility = 'hidden'")
-                    page.locator('#topology').screenshot(path=str(Path(output) / f'map-{width}-{theme}-details.png'), animations='disabled')
-                    page.locator('.site-header').evaluate("e => e.style.visibility = ''")
-                page.locator('#map-detail-close').click()
+                screenshot(width, height, theme, 'details')
+                (node('motion-room1') if theme == 'dark' else page.locator('#map-detail-close')).click()
                 assert not panel.is_visible()
+                geometry()
+                assert abs(page.locator('.topology-board').bounding_box()['width'] - full_width) < 1
                 assert node('motion-room1').evaluate('e => e === document.activeElement')
 
         # Keyboard selection, focus restoration, one panel, preserved node identity.
         page.set_viewport_size({'width': 1440, 'height': 1000})
         node('esp32-room1').focus()
+        page.keyboard.press('Shift+Tab')
+        page.keyboard.press('Tab')
+        assert node('esp32-room1').locator('.map-node-icon').evaluate("e => getComputedStyle(e).outlineStyle === 'dashed'")
         page.keyboard.press('Enter')
         assert page.locator('#map-detail-title').inner_text() == 'ESP32 Room 1'
         assert '20.8 °C' in panel.inner_text()
@@ -152,6 +209,7 @@ def main():
         page.evaluate('topologyBoard.load()')
         assert not node('motion-room1').evaluate("e => e.classList.contains('map-pulse')")
         page.emulate_media(reduced_motion='reduce')
+        assert page.locator('.smart-map-workspace').evaluate("e => getComputedStyle(e).transitionDuration === '0s'")
         motion['activity_at'] = '2026-09-30T22:01:02Z'
         page.evaluate('topologyBoard.load()')
         assert not node('motion-room1').evaluate("e => e.classList.contains('map-pulse')")
@@ -161,7 +219,7 @@ def main():
         page.evaluate('topologyBoard.receivedAt = performance.now() - 16000; topologyBoard.tick()')
         assert node('esp32-room1').locator('[data-field="status"]').inner_text() == 'Offline'
         assert page.locator('#topology-summary').inner_text() == 'Awaiting update'
-        assert page.locator('.topology-path-group path[data-link-state="online"]').count() == 0
+        assert page.locator('.topology-path-group path[data-link-state]').count() == 0
         page.evaluate('topologyBoard.load()')
         fixture['data']['system']['status'] = 'degraded'
         page.evaluate('topologyBoard.load()')
@@ -174,7 +232,7 @@ def main():
         assert page.locator('#system-uptime').inner_text() == '—'
         assert page.locator('.map-node[data-health="stale"]').count() == 3
         assert 'outdated' in panel.inner_text()
-        assert page.locator('.topology-path-group path[data-link-state="online"]').count() == 0
+        assert page.locator('.topology-path-group path[data-link-state]').count() == 0
         fixture['status'] = 200
         fixture['data']['status'] = 'partial'
         fixture['data']['nodes'][1].update(status='unknown', data_status='unavailable')
@@ -197,6 +255,20 @@ def main():
         for width in (1440, 390):
             page.set_viewport_size({'width': width, 'height': 1000})
             geometry()
+        extra_zigbee = copy.deepcopy(BASE['nodes'][2])
+        extra_zigbee.update(id='future-zigbee', device_id='long-device-identifier-' * 6, name='Additional room sensor')
+        fixture['data']['nodes'].append(extra_zigbee)
+        extra_link = copy.deepcopy(BASE['links'][1])
+        extra_link.update(id='future-zigbee-link', source='future-zigbee')
+        fixture['data']['links'].append(extra_link)
+        page.evaluate('topologyBoard.load()')
+        for width in (1920, 1024, 390, 320):
+            page.set_viewport_size({'width': width, 'height': 1000})
+            if node('future-zigbee').get_attribute('aria-expanded') != 'true':
+                node('future-zigbee').click()
+            geometry()
+            assert panel.evaluate('e => e.scrollWidth <= e.clientWidth'), 'long detail value overflow'
+        assert page.locator('.map-node').count() == 5
         fixture['data']['nodes'][1]['name'] = '<img src=x onerror="alert(1)">'
         page.evaluate('topologyBoard.load()')
         node('esp32-room1').click()
@@ -244,7 +316,7 @@ def main():
         page.wait_for_function("document.querySelector('#topology-summary').textContent === 'System healthy'")
         assert page.evaluate('document.documentElement.dataset.theme') == 'light'
         assert not errors, errors
-        print('Smart Home Map browser checks passed: navigation, isolated polling, six widths, two themes, SVG geometry, keyboard/focus, live details, node reuse, motion/clear, reduced motion, freshness, failures/recovery, empty/extra nodes and safe rendering.')
+        print('Smart Home Map browser checks passed: navigation, isolated polling, nine widths, two themes, floating nodes, neutral SVG geometry/endpoints, centered drawer reflow, keyboard/focus, live details, node reuse, motion/clear, reduced motion, freshness, failures/recovery, empty/extra nodes and safe rendering.')
         browser.close()
 
 
