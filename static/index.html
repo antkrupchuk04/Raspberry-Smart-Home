@@ -5,13 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smart Home — Raspberry Pi Monitoring System</title>
   <script>
+    const openLegacyMap = () => { if (location.hash === '#topology') location.replace('/topology'); };
+    openLegacyMap();
+    addEventListener('hashchange', openLegacyMap);
     try {
       document.documentElement.dataset.theme = localStorage.getItem('theme') ||
         (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
     } catch (_) { document.documentElement.dataset.theme = 'dark'; }
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=motion-1">
-  <script src="/static/app.js?v=motion-1" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=topology-page-1">
+  <script src="/static/app.js?v=topology-page-1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#environment">Skip to telemetry</a>
@@ -32,7 +35,7 @@
       </div>
     </div>
     <nav class="top-nav mono" aria-label="Dashboard sections">
-      <a href="#environment">Environment</a><a href="#history">History</a><a href="#motion">Motion</a><a href="#automation">Automation</a><a href="#devices">Devices</a>
+      <a href="#environment">Environment</a><a href="#history">History</a><a href="/topology">Smart Home Map</a><a href="#motion">Motion</a><a href="#automation">Automation</a><a href="#devices">Devices</a>
     </nav>
   </header>
 

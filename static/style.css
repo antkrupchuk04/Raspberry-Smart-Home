@@ -129,6 +129,7 @@
 .top-nav { display: flex; gap: 16px; overflow-x: auto; padding: 4px 0 8px; font-size: 11px; }
 .top-nav a { color: var(--text-secondary); text-decoration: none; white-space: nowrap; }
 .top-nav a:hover, .top-nav a:focus-visible { color: var(--text); }
+.top-nav a[aria-current="page"] { color: var(--blue); }
 .skip-link { position: absolute; left: 16px; top: -60px; z-index: 100; background: var(--surface); color: var(--text); padding: 8px; }
 .skip-link:focus { top: 8px; }
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
@@ -275,3 +276,61 @@ body.chart-expanded { overflow: hidden; }
   .module-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .detail-grid > div { flex-wrap: wrap; gap: 2px 8px; }
 }
+
+/* Smart Home Map: shared colors and type, compact devices, progressive details. */
+.map-icon-library { position: absolute; width: 0; height: 0; overflow: hidden; }
+.smart-map-workspace { display: grid; grid-template-columns: minmax(0,1fr); gap: 24px; align-items: start; }
+.topology-board { position: relative; min-width: 0; padding: 24px 16px 28px; }
+.map-hub { display: flex; justify-content: center; position: relative; z-index: 1; }
+.map-groups { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); gap: 48px; margin: 72px auto 0; max-width: 900px; }
+.map-groups:empty { display: none; }
+.map-group { position: relative; min-width: 0; }
+.map-group-title { color: var(--text-secondary); font-size: 11px; font-weight: 500; padding-left: 38px; margin-bottom: 18px; }
+.map-device-list { display: flex; flex-direction: column; gap: 24px; padding-left: 38px; align-items: center; }
+.map-node { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; max-width: 230px; min-width: 0; padding: 18px 12px; border: 1px solid var(--border); border-radius: var(--card-radius); background: var(--surface-muted); color: var(--text); font: inherit; text-align: center; cursor: pointer; transition: border-color .2s ease, background-color .2s ease; overflow-wrap: anywhere; }
+.map-node:hover { background: var(--surface-hover); border-color: var(--text-secondary); }
+.map-node[data-type="hub"] { max-width: 250px; background: var(--surface-hover); border-top: 2px solid var(--blue); }
+.map-node[data-selected="true"] { outline: 2px solid var(--blue); outline-offset: 3px; }
+.map-node[data-health="stale"] { border-style: dashed; }
+.map-node-icon { display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid var(--border); border-radius: 50%; color: var(--blue); margin-bottom: 5px; background: var(--surface); }
+.map-node-icon svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.map-node[data-type="hub"] .map-node-icon { width: 64px; height: 64px; }
+.map-node[data-type="hub"] .map-node-icon svg { width: 36px; height: 36px; }
+.map-node-name { font-weight: 600; font-size: 13px; }
+.map-node-room { font-size: 11px; color: var(--text-secondary); }
+.map-node-status { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; margin-top: 4px; }
+.map-status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.map-node-condition { font-size: 10px; }
+.map-node-condition[hidden] { display: none; }
+.map-pulse .map-node-icon { animation: map-motion .7s ease-out 1; }
+@keyframes map-motion { from { box-shadow: 0 0 0 2px var(--orange); } to { box-shadow: 0 0 0 10px transparent; } }
+.topology-paths { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.map-trunks path { fill: none; stroke: var(--border); stroke-width: 1.5; }
+.topology-path-group path { fill: none; stroke: currentColor; stroke-width: 2; stroke-dasharray: 4 4; }
+.topology-path-group path[data-link-state="online"] { stroke-dasharray: none; }
+.topology-legend { font-size: 10px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 16px; padding-top: 12px; }
+.map-empty { text-align: center; padding: 48px 12px 20px; }
+.map-details { background: var(--surface-muted); border: 1px solid var(--border); border-radius: var(--card-radius); padding: 16px; min-width: 0; scroll-margin-top: 160px; }
+.map-details[hidden] { display: none; }
+.map-details-header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.map-details h3 { font-size: 15px; margin-top: 3px; overflow-wrap: anywhere; }
+.map-details h4 { margin-top: 22px; }
+.map-detail-status { font-size: 11px; margin-top: 12px; }
+.map-details .status-list > div { flex-wrap: wrap; }
+.map-detail-readings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin-top: 10px; }
+.map-detail-readings dd { font-size: 16px; color: var(--text); }
+.map-detail-readings dd[data-state="warning"] { color: var(--orange); }
+.map-detail-readings dd[data-state="online"] { color: var(--green); }
+.map-detail-readings [data-key="occupancy"] { grid-column: 1 / -1; }
+.map-detail-note { color: var(--text-secondary); font-size: 11px; margin-top: 20px; }
+@media (min-width: 900px) {
+  .smart-map-workspace[data-details-open="true"] { grid-template-columns: minmax(0,1fr) minmax(280px,340px); }
+  .map-details { position: sticky; top: 112px; max-height: calc(100vh - 132px); overflow-y: auto; }
+}
+@media (max-width: 600px) {
+  #topology { scroll-margin-top: 180px; }
+  .topology-board { padding: 20px 0; }
+  .map-groups { gap: 36px; }
+  .map-details { scroll-margin-top: 180px; }
+}
+@media (prefers-reduced-motion: reduce) { .map-pulse .map-node-icon { animation: none; } .map-node { transition: none; } }

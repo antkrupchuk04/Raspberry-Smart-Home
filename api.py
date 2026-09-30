@@ -12,6 +12,7 @@ from room_analytics import analyze_room
 from weather_service import WeatherUnavailable, get_current_weather
 from system_status import SystemStatusMonitor
 from motion_service import MotionConfig, get_motion_status
+from topology_service import TopologyService
 
 
 LOGGER = logging.getLogger(__name__)
@@ -37,6 +38,8 @@ system_monitor = SystemStatusMonitor(
     zigbee_device=os.getenv("ZIGBEE_SERIAL_DEVICE"),
 )
 motion_config = MotionConfig.from_env()
+topology_service = TopologyService(DB_CONFIG, system_monitor,
+                                   motion_devices=({"id": "motion-room1", "config": motion_config},))
 
 
 def get_connection():
@@ -55,6 +58,11 @@ def dashboard():
     return FileResponse(
         "/home/anton/smarthome/static/index.html"
     )
+
+
+@app.get("/topology", include_in_schema=False)
+def topology_page():
+    return FileResponse("/home/anton/smarthome/static/topology.html")
 
 
 @app.get("/api/sensors/latest")
@@ -100,6 +108,11 @@ def get_motion(response: Response, hours: int = Query(default=24, ge=1, le=168),
     except psycopg2.Error:
         LOGGER.exception("Motion database query failed")
         raise HTTPException(status_code=503, detail="Motion monitoring is temporarily unavailable")
+
+
+@app.get("/api/topology")
+def get_topology():
+    return JSONResponse(topology_service.get_topology(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/sensors/history")

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Home Map</title>
+  <script>
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem('theme') ||
+        (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    } catch (_) { document.documentElement.dataset.theme = 'dark'; }
+  </script>
+  <link rel="stylesheet" href="/static/style.css?v=topology-page-1">
+  <script src="/static/topology.js?v=topology-page-1" defer></script>
+  <script src="/static/topology-page.js?v=topology-page-1" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#topology">Skip to system map</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand-section">
+        <div class="brand-icon" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7 6V3m5 3V3m5 3V3M7 18v3m5-3v3m5-3v3M4 9H1m3 6H1m19-6h3m-3 6h3" stroke="currentColor" stroke-width="1.8"/></svg>
+        </div>
+        <h1 class="brand-title">Smart Home <span class="brand-subtitle mono">Raspberry Pi 5</span></h1>
+      </div>
+      <div class="header-meta mono">
+        <time id="local-clock">—</time>
+        <span class="text-secondary" title="Raspberry Pi system uptime">Uptime <strong id="system-uptime">—</strong></span>
+        <span class="chip" id="connection-badge">API: connecting</span>
+        <span class="status-pill" id="overall-status" data-state="unknown" title="Host and dependency health"><span class="glow-dot" aria-hidden="true"></span><span id="overall-status-text">CONNECTING</span></span>
+        <button class="theme-toggle mono" id="theme-toggle" type="button" aria-label="Switch to light theme">☀ Light</button>
+      </div>
+    </div>
+    <nav class="top-nav mono" aria-label="Main navigation">
+      <a href="/">Dashboard</a><a href="/topology" aria-current="page">Smart Home Map</a><a href="/#motion">Motion</a><a href="/#devices">Devices</a>
+    </nav>
+  </header>
+  <main class="dashboard-grid topology-page">
+    <article class="console-card full-width" id="topology" aria-labelledby="topology-title">
+      <header class="card-header">
+        <div class="card-heading"><h2 class="card-title" id="topology-title">Smart Home Map</h2><p class="card-subtitle mono">Your devices and connections</p></div>
+        <span class="chip mono" id="topology-summary">Loading</span>
+      </header>
+      <div class="card-body">
+        <p class="empty-state" id="topology-message" role="status">Loading your home…</p>
+        <div class="smart-map-workspace" data-details-open="false">
+          <div class="topology-board" id="topology-board" aria-label="Smart home devices and connections">
+            <svg class="topology-paths" aria-hidden="true"><g class="map-trunks"></g><g class="topology-path-group"></g></svg>
+            <div class="map-hub"></div>
+            <div class="map-groups"></div>
+            <p class="map-empty text-secondary" hidden>No devices configured yet.</p>
+          </div>
+          <aside class="map-details" id="map-details" aria-labelledby="map-detail-title" hidden>
+            <header class="map-details-header"><div><p class="detail-label mono">Device details</p><h3 id="map-detail-title" tabindex="-1"></h3></div><button class="action-btn" id="map-detail-close" type="button" aria-label="Close device details">Close</button></header>
+            <p class="map-detail-status mono" id="map-detail-status"></p>
+            <h4 class="detail-label mono">Device</h4><dl class="status-list mono" id="map-detail-overview"></dl>
+            <h4 class="detail-label mono" id="map-readings-title">Readings</h4><dl class="map-detail-readings mono" id="map-detail-metrics"></dl>
+            <h4 class="detail-label mono">Diagnostics &amp; activity</h4><dl class="status-list mono" id="map-detail-diagnostics"></dl>
+            <p class="map-detail-note" id="map-detail-note"></p>
+          </aside>
+        </div>
+        <p class="topology-legend mono">Select a device for details · Green connection: recent data · Dashed connection: unverified or unavailable</p>
+      </div>
+      <footer class="card-footer mono" id="topology-updated">Waiting for topology…</footer>
+    </article>
+    <noscript><p class="empty-state">Enable JavaScript to load the live system map.</p></noscript>
+  </main>
+  <template id="topology-node">
+    <button class="map-node" type="button" aria-controls="map-details" aria-expanded="false">
+      <span class="map-node-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use></use></svg></span>
+      <span class="map-node-name"></span><span class="map-node-room"></span>
+      <span class="map-node-status mono"><span class="map-status-dot" aria-hidden="true"></span><span data-field="status"></span></span>
+      <span class="map-node-condition mono" hidden></span>
+    </button>
+  </template>
+  <svg class="map-icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="map-icon-hub" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="4"/><path d="M8 16h8M8 18h4M8 9a6 6 0 0 1 8 0M10 11a3 3 0 0 1 4 0"/><circle cx="12" cy="13" r=".5"/></symbol>
+    <symbol id="map-icon-esp32" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM8 2v3m4-3v3m4-3v3M8 19v3m4-3v3m4-3v3M2 8h3m-3 4h3m-3 4h3m14-8h3m-3 4h3m-3 4h3"/></symbol>
+    <symbol id="map-icon-motion" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="5"/><path d="M8 8a6 6 0 0 1 8 0M9 11a4 4 0 0 1 6 0M10 14a2 2 0 0 1 4 0"/><circle cx="12" cy="18" r=".7"/></symbol>
+    <symbol id="map-icon-coordinator" viewBox="0 0 24 24"><rect x="7" y="8" width="10" height="14" rx="2"/><path d="M9 8V2h6v6M11 4v2m2-2v2M10 16l2-4 2 4-2 3z"/></symbol>
+    <symbol id="map-icon-water" viewBox="0 0 24 24"><path d="M12 2C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-13zM8 15a4 4 0 0 0 4 4"/></symbol>
+    <symbol id="map-icon-plug" viewBox="0 0 24 24"><path d="M8 3v6m8-6v6M6 9h12v4a6 6 0 0 1-12 0zM12 19v3"/></symbol>
+    <symbol id="map-icon-contact" viewBox="0 0 24 24"><rect x="4" y="2" width="11" height="20" rx="2"/><rect x="18" y="5" width="3" height="9" rx="1"/><path d="M11 12h1"/></symbol>
+    <symbol id="map-icon-sensor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3"/></symbol>
+  </svg>
+  <footer class="site-footer"><div class="footer-inner mono"><strong>Smart Home Monitoring</strong><span>Smart Home Map · Raspberry Pi 5</span></div></footer>
+</body>
+</html>

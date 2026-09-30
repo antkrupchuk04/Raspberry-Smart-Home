@@ -1,0 +1,296 @@
+{
+  "generated_at": "2026-09-30T19:01:26.718069+00:00",
+  "refresh_seconds": 10,
+  "status": "ok",
+  "sources": {
+    "system": "ok",
+    "climate": "ok",
+    "motion": "ok"
+  },
+  "nodes": [
+    {
+      "id": "raspberry",
+      "type": "hub",
+      "name": "Raspberry Pi 5",
+      "room": "raspberry",
+      "status": "online",
+      "status_label": "Online",
+      "data_status": "available",
+      "device_id": "raspberry",
+      "metrics": [
+        {
+          "key": "cpu",
+          "label": "CPU",
+          "value": 2.3,
+          "unit": "%",
+          "precision": 0,
+          "kind": "number"
+        },
+        {
+          "key": "memory",
+          "label": "RAM",
+          "value": 18,
+          "unit": "%",
+          "precision": 0,
+          "kind": "number"
+        },
+        {
+          "key": "disk",
+          "label": "Disk",
+          "value": 15,
+          "unit": "%",
+          "precision": 0,
+          "kind": "number"
+        },
+        {
+          "key": "temperature",
+          "label": "CPU temp",
+          "value": 42.1,
+          "unit": "\u00b0C",
+          "precision": 1,
+          "kind": "number"
+        }
+      ],
+      "details": [
+        {
+          "key": "hostname",
+          "label": "Hostname",
+          "value": "raspberry",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "uptime",
+          "label": "Uptime",
+          "value": "1d 2h",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "api",
+          "label": "FastAPI",
+          "value": "Running",
+          "kind": "text"
+        },
+        {
+          "key": "mqtt",
+          "label": "MQTT",
+          "value": "Online",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "database",
+          "label": "PostgreSQL",
+          "value": "Connected",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "internet",
+          "label": "Internet",
+          "value": "Online",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "zigbee",
+          "label": "USB coordinator",
+          "value": "Device present",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "zigbee2mqtt",
+          "label": "Zigbee2MQTT health",
+          "value": "Not monitored",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        }
+      ],
+      "note": "USB presence does not verify Zigbee2MQTT or device availability."
+    },
+    {
+      "id": "esp32-room1",
+      "type": "esp32",
+      "name": "ESP32 Room 1",
+      "room": "Room 1",
+      "device_id": "esp32-room1",
+      "status": "online",
+      "status_label": "Online",
+      "data_status": "reported",
+      "last_seen": "2026-09-30T19:01:24.717472+00:00",
+      "age_seconds": 2.0,
+      "online_for_seconds": 13.0,
+      "metrics": [
+        {
+          "key": "temperature",
+          "label": "Temperature",
+          "value": 20.8,
+          "unit": "\u00b0C",
+          "precision": 1,
+          "kind": "number"
+        },
+        {
+          "key": "humidity",
+          "label": "Humidity",
+          "value": 57,
+          "unit": "%",
+          "precision": 1,
+          "kind": "number"
+        },
+        {
+          "key": "pressure",
+          "label": "Pressure",
+          "value": 997.2,
+          "unit": "hPa",
+          "precision": 1,
+          "kind": "number"
+        }
+      ],
+      "details": [
+        {
+          "key": "sensors",
+          "label": "Sensors",
+          "value": "BMP280 \u00b7 DHT11",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "recorded_at",
+          "label": "Last reading",
+          "value": "2026-09-30T19:01:24.717472+00:00",
+          "unit": "",
+          "precision": 0,
+          "kind": "timestamp"
+        }
+      ],
+      "note": "Status follows stored telemetry freshness; ESP32 RSSI is not reported."
+    },
+    {
+      "id": "motion-room1",
+      "type": "zigbee_motion",
+      "name": "Motion Sensor",
+      "room": "Living room",
+      "device_id": "test-ieee",
+      "status": "unknown",
+      "status_label": "Availability unknown",
+      "data_status": "reported",
+      "last_seen": "2026-09-30T19:01:24.717472+00:00",
+      "age_seconds": 2.0,
+      "activity": "detected",
+      "activity_at": "2026-09-30T19:01:24.717472+00:00",
+      "metrics": [
+        {
+          "key": "occupancy",
+          "label": "Last reported PIR state",
+          "value": "Motion detected",
+          "unit": "",
+          "precision": 0,
+          "kind": "text",
+          "state": "warning"
+        },
+        {
+          "key": "battery",
+          "label": "Battery",
+          "value": 100,
+          "unit": "%",
+          "precision": 0,
+          "kind": "number"
+        },
+        {
+          "key": "lqi",
+          "label": "LQI",
+          "value": 131,
+          "unit": "/ 255",
+          "precision": 0,
+          "kind": "number"
+        }
+      ],
+      "details": [
+        {
+          "key": "model",
+          "label": "Model",
+          "value": "Tuya TS0202",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "battery_low",
+          "label": "Battery low",
+          "value": "No",
+          "unit": "",
+          "precision": 0,
+          "kind": "text"
+        },
+        {
+          "key": "voltage",
+          "label": "Voltage",
+          "value": 3100,
+          "unit": "mV",
+          "precision": 0,
+          "kind": "number"
+        },
+        {
+          "key": "last_seen",
+          "label": "Last report",
+          "value": "2026-09-30T19:01:24.717472+00:00",
+          "unit": "",
+          "precision": 0,
+          "kind": "timestamp"
+        },
+        {
+          "key": "state_reported_at",
+          "label": "State reported",
+          "value": "2026-09-30T19:01:24.717472+00:00",
+          "unit": "",
+          "precision": 0,
+          "kind": "timestamp"
+        },
+        {
+          "key": "last_motion_at",
+          "label": "Last motion",
+          "value": "2026-09-30T19:01:24.717472+00:00",
+          "unit": "",
+          "precision": 0,
+          "kind": "timestamp"
+        }
+      ],
+      "note": "Last reported motion, not continuous presence. Quiet periods do not prove the sensor is offline."
+    }
+  ],
+  "links": [
+    {
+      "id": "esp32-room1:raspberry",
+      "source": "esp32-room1",
+      "target": "raspberry",
+      "protocol": "mqtt",
+      "transport": "wifi",
+      "label": "Wi-Fi / MQTT",
+      "status": "online",
+      "note": "Recent stored telemetry and broker reachability; no direct Wi-Fi probe."
+    },
+    {
+      "id": "motion-room1:raspberry",
+      "source": "motion-room1",
+      "target": "raspberry",
+      "protocol": "zigbee",
+      "transport": "zigbee",
+      "label": "Zigbee",
+      "status": "unknown",
+      "note": "Via USB coordinator \u2192 Zigbee2MQTT \u2192 MQTT. Live Zigbee availability is not monitored."
+    }
+  ],
+  "system": {
+    "status": "healthy"
+  }
+}

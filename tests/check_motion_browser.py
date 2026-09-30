@@ -49,6 +49,8 @@ def main():
         assert "Living room" in page.locator("#motion .card-subtitle").inner_text()
         assert page.locator("#motion-events li").count() == 1
         assert sorted(page.evaluate("window.testIntervals")) == [1000, 5000, 5000, 10000, 10000, 30000, 600000]
+        assert page.locator('#topology').count() == 0
+        assert page.locator('.top-nav a[href="/topology"]').inner_text() == 'Smart Home Map'
         page.evaluate("window.originalMotionRow=document.querySelector('#motion-events li')")
         page.evaluate("loadMotion()")
         assert page.evaluate("window.originalMotionRow===document.querySelector('#motion-events li')")
