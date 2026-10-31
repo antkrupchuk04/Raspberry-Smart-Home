@@ -1,0 +1,11 @@
+# Private configuration (at any depth)
+secrets.h
+
+# Generated build output and desktop metadata
+build/
+build-*/
+detector_test
+*.bin
+*.elf
+*.map
+.DS_Store
