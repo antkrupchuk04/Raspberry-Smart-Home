@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Home — Raspberry Pi Monitoring System</title>
+  <title>Smart Home</title>
   <script>
     const openLegacyMap = () => { if (location.hash === '#topology') location.replace('/topology'); };
     openLegacyMap();
@@ -14,7 +17,7 @@
     } catch (_) { document.documentElement.dataset.theme = 'dark'; }
   </script>
   <link rel="stylesheet" href="/static/style.css?v=map-polish-1">
-  <script src="/static/app.js?v=map-ui-v3" defer></script>
+  <script src="/static/app.js?v=csi-history-1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#environment">Skip to telemetry</a>
@@ -120,8 +123,13 @@
   </template>
   <template id="motion-body">
     <p class="empty-state" id="motion-message" role="status">Loading motion sensor…</p>
-    <dl class="module-fields mono"><div><dt>PIR / Last reported state</dt><dd id="motion-state" data-state="unknown">—</dd></div><div><dt>Wi-Fi CSI</dt><dd>Not installed</dd></div><div><dt>Camera</dt><dd>Not installed</dd></div><div><dt>Last motion</dt><dd id="motion-last">—</dd></div><div><dt>Today's detections</dt><dd id="motion-count">—</dd></div><div><dt>Battery</dt><dd id="motion-battery">—</dd></div><div><dt>Signal / LQI</dt><dd id="motion-signal">—</dd></div><div><dt>Last report</dt><dd id="motion-seen">—</dd></div></dl>
-    <div class="timeline"><h3 class="detail-label mono">Timeline / Last 24 hours</h3><p class="text-secondary" id="motion-empty">Waiting for recorded events.</p><ol class="motion-events mono" id="motion-events" aria-label="Recent motion state changes"></ol></div>
+    <dl class="module-fields mono"><div><dt>PIR / Last reported state</dt><dd id="motion-state" data-state="unknown">—</dd></div><div><dt>Wi-Fi CSI / Filtered</dt><dd id="csi-state" data-state="unknown">CONNECTING</dd></div><div><dt>Camera</dt><dd>Not installed</dd></div><div><dt>Last motion</dt><dd id="motion-last">—</dd></div><div><dt>Today's detections</dt><dd id="motion-count">—</dd></div><div><dt>Battery</dt><dd id="motion-battery">—</dd></div><div><dt>Signal / LQI</dt><dd id="motion-signal">—</dd></div><div><dt>Last report</dt><dd id="motion-seen">—</dd></div></dl>
+    <section class="timeline" aria-labelledby="csi-heading"><h3 class="detail-label mono" id="csi-heading">Wi-Fi CSI / ESP32 Room 1</h3>
+      <p class="empty-state" id="csi-message" role="status">Waiting for live CSI reports…</p>
+      <dl class="module-fields mono"><div><dt>Motion score</dt><dd id="csi-score">—</dd></div><div><dt>ESP32 raw state</dt><dd id="csi-raw-state" data-state="unknown">UNKNOWN</dd></div><div><dt>Filtered detection / clear</dt><dd id="csi-thresholds">—</dd></div><div><dt>Calibration</dt><dd id="csi-calibration">—</dd></div><div><dt>Samples / window</dt><dd id="csi-samples">—</dd></div><div><dt>Wi-Fi signal</dt><dd id="csi-rssi">—</dd></div><div><dt>Dropped frames</dt><dd id="csi-dropped">—</dd></div><div><dt>Last CSI detection</dt><dd id="csi-last-motion">—</dd></div><div><dt>Last CSI report</dt><dd id="csi-seen">—</dd></div></dl>
+    </section>
+    <div class="timeline"><h3 class="detail-label mono">Wi-Fi CSI timeline / Last 24 hours</h3><p class="text-secondary" id="csi-events-empty" role="status">Waiting for CSI history…</p><ol class="motion-events mono" id="csi-events" aria-label="Recent confirmed Wi-Fi CSI motion changes"></ol></div>
+    <div class="timeline"><h3 class="detail-label mono">Zigbee PIR timeline / Last 24 hours</h3><p class="text-secondary" id="motion-empty">Waiting for recorded events.</p><ol class="motion-events mono" id="motion-events" aria-label="Recent motion state changes"></ol></div>
   </template>
   <template id="automation-body">
     <p class="empty-state">Module not yet installed.</p>

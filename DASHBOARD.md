@@ -55,6 +55,7 @@ The three first-class sensors are configured in `SENSORS`. They use one `sensor-
 | Outdoor weather | `/api/weather/current` | 10 minutes |
 | Host and dependency health | `/api/system/status` | 10 seconds |
 | PIR state, diagnostic values and motion timeline | `/api/motion?hours=24&limit=20` | 5 seconds |
+| Live ESP32 CSI state and diagnostics | `/api/motion/csi` | 5 seconds, independently of the PIR refresh |
 | Configured-device topology | `/api/topology` | 10 seconds on the visible map page only |
 
 System Status has one independent ten-second poller with request timeout and overlap protection. Switching chart metric reuses the fetched history. Range changes cancel the previous request so a slow response cannot replace a newer selection. Duplicate current/history requests cannot overlap. DOM text changes only when the value changes, AI messages are compared before replacing nodes, and unchanged history avoids redundant chart rendering. A `ResizeObserver` resizes the canvas when its container changes, including fullscreen transitions. The existing one-second clock updates freshness locally without another request.
@@ -69,7 +70,40 @@ AI recommendations use the actual comfort messages returned by the existing anal
 
 Motion now records the Living room Tuya TS0202 through Zigbee2MQTT and the existing collector. Its card displays the last reported PIR state, last motion, today's detections, battery, LQI, last report and a bounded timeline. The Zigbee card shows this integrated sensor and the coordinator's serial-device presence. It does not claim to be a full network inventory. See [Motion integration](MOTION.md) for state-change counting, retained-message handling and collection limits.
 
-Automation and camera remain compact future-module placeholders. Snapshot and network-map controls remain disabled. The standalone RSSI motion script is separate from the planned Wi-Fi CSI integration.
+Automation and camera remain compact future-module placeholders. Snapshot and network-map controls remain disabled. The standalone RSSI motion script is separate from the live ESP32 CSI display.
+
+## Live Wi-Fi CSI display
+
+`csi_service.py` provides a single lightweight Paho subscriber during FastAPI's lifespan, using the existing `MQTT_BROKER`/`MQTT_PORT`. Its unique client ID avoids collisions with the ESP32 and collector. Only the exact `CSI_MQTT_TOPIC` is subscribed (default `home/motion/room1/csi`) and reports must match `CSI_DEVICE_ID` (default `esp32-room1`). It never publishes messages. Confirmed transitions are submitted to the independent `csi_history.py` queue worker for PostgreSQL storage. No runtime dependency was added.
+
+`GET /api/motion/csi` returns HTTP 200/no-store with feed status (`live`, `waiting`, `stale`, `mqtt_offline`), firmware state, filtered `motion`, original `raw_motion`, score, firmware thresholds, effective filter configuration/thresholds, calibration count, samples, RSSI, drop counters, receipt time, report age, remaining freshness lease and last detection, recent persisted `events` and `history_available`. Optional `hours` (1–168) and `limit` (1–100) default to 24/20. Invalid, oversized, non-finite, wrong-device and retained reports are ignored. Expected offline states do not spam logs; invalid-report warnings are bounded to one per failure episode. Reconnecting requires a new live report.
+
+Freshness uses a centralized five-second threshold and a monotonic clock. Outside a fresh ready state, motion is null; stale/disconnected reports have no current numerical readings. Settling/calibrating/no-data are explicitly unknown rather than clear. The remaining lease is returned so the existing one-second browser clock can expire the display locally without inventing another timeout. The browser fetches CSI independently every five seconds, with timeout and overlap protection. Filtering processes each one-second MQTT report on the server, so it does not depend on browser polling. PIR, climate, chart and system-status intervals remain unchanged. Failure of the PIR API does not suppress CSI, and CSI failure does not suppress PIR.
+
+The existing Motion card's CSI field shows filtered live status, and an ESP32 raw-state field exposes the source flag independently. A compact subsection uses existing field-grid and theme styles for score, detection/clear thresholds, calibration windows, samples/window, actual Wi-Fi RSSI, dropped frames, last CSI detection and report time. Missing values render as unavailable, including thresholds before calibration completes; numeric zero remains valid. No continuous-presence claim or confidence percentage is displayed.
+
+`CsiMotionFilter` uses centralized `CSI_FILTER` settings: score multiplier 1.25, three confirmation reports, three clearing reports, and a maximum 2.5-second gap. A report counts toward activation only when the firmware motion flag is true and its score reaches 1.25× the firmware on-threshold. Consecutive low scores below 1.25× the firmware off-threshold, or raw-clear reports, clear the filtered state after three reports. This avoids treating the firmware's hysteresis-latched flag alone as sustained activity. Isolated high scores reset confirmation instead of accumulating. No-data/calibration, reconnects, source restarts, long source/receipt gaps and threshold changes reset the filter; duplicate ready reports with the same source uptime do not count or refresh freshness. Last detection timestamps update only on confirmed filtered transitions. The API retains original firmware thresholds and provides effective thresholds in `filter`; the UI displays the latter. These conservative defaults can suppress brief genuine motion and still need room-specific validation.
+
+The Motion card has a separate **Wi-Fi CSI timeline / Last 24 hours**, alongside the explicitly labeled Zigbee PIR timeline. It uses the shared timestamp/state/room row renderer and existing theme/grid styles, shows the latest 20 confirmed changes newest first, and preserves unchanged DOM rows. Five-second polling updates the CSI state and list together; events are captured independently of the browser. Empty, unavailable, stale and recovery states remain distinct. CSI does not contribute to the PIR event count or Telegram notifications, and the separate Smart Home Map is unchanged.
+
+`csi_motion_events` stores UUID, device ID, room, filtered motion boolean, score, effective thresholds and timezone-aware Pi observation time. The compound device/time index bounds history reads. Filter activation emits one detected event; three quiet reports emit one clear. Repeated reports and page refreshes add nothing. Calibration, stale data, threshold/channel gaps and disconnect/restart resets never invent clears. History begins at enablement; older CSI events cannot be reconstructed.
+
+The additive `initialize_schema()` migration creates only the CSI table/index; it is repeatable and preserves other tables. The existing database settings are reused. Run it explicitly before restarting the updated API:
+
+```bash
+cd ~/smarthome
+set -a
+. ./.env
+set +a
+venv/bin/python -c 'from api import DB_CONFIG; from csi_history import initialize_schema; initialize_schema(DB_CONFIG)'
+sudo systemctl restart smarthome-api
+```
+
+A bounded 128-event queue keeps PostgreSQL work out of the MQTT callback. Failed writes retry the same UUID, with `ON CONFLICT DO NOTHING` preventing duplicate commits. Committed history survives process restarts. The queue itself is in memory: queued events can be lost on shutdown during an outage or on overflow, and reports during API downtime are not reconstructed. Logging is bounded by failure episode. Reads and writes use one-second connect and 750ms statement timeouts. History failures are reported separately while live CSI continues. No PostgreSQL, collector or broker service restart is required. `CSI_ROOM` optionally labels recorded events, defaulting to Room 1; the private `.env` is preserved.
+
+Last CSI detection uses the latest in-process confirmation when available and falls back to the database after restart. There is no synthetic initial clear on startup and no backfill from raw MQTT samples.
+
+`tests/test_csi.py` covers parsing, freshness boundaries, weak/isolated spikes, sustained confirmation, stable clearing, gap/reboot/threshold resets, unknown states, MQTT disconnect/reconnect, retained/duplicate/invalid reports, confirmed transition timestamps and lifecycle/API isolation without a real broker. Additional `tests/test_csi_history.py` cases cover retries/UUID idempotency, bounded queues, timeouts, query limits/device isolation, empty history and repeatable migration/restart persistence in isolated PostgreSQL schemas. Dashboard browser checks also cover separate timestamped CSI/PIR lists, unchanged row identity, empty/history-error recovery, safe text rendering, CSI states and local expiry at four widths in both themes.
 
 ## Smart Home Map
 
@@ -124,11 +158,11 @@ For an **Aqara Water Leak Sensor**, after pairing it with Zigbee2MQTT:
 2. Add a small backend adapter/registry entry returning a `zigbee_water_leak` node and Zigbee link, with real metric/detail descriptors and an optional human-readable `activity_label` such as Water detected. Leave availability unknown until trustworthy reporting exists.
 3. Add mapping tests and a browser fixture. The water icon, generic details and grouped layout already work; individual HTML or SVG coordinates are unnecessary.
 
-No water-leak detection/control is implemented by preparing its icon. Automatic inventory/discovery, Zigbee bridge/device availability and mesh routing are not implemented. Coordinator presence is only a device-path check. Existing climate APIs remain centered on one room. RSSI motion monitoring is a separate experiment; Wi-Fi CSI remains planned.
+No water-leak detection/control is implemented by preparing its icon. Automatic inventory/discovery, Zigbee bridge/device availability and mesh routing are not implemented. Coordinator presence is only a device-path check. Existing climate APIs remain centered on one room. RSSI motion monitoring is a separate experiment; the experimental CSI feed is shown in the main Motion card only.
 
 ### Map validation
 
-The complete backend suite passes **99 tests**, including existing isolated PostgreSQL checks. Topology coverage includes JSON structure and aggregate status, FastAPI diagnostics, hub/ESP32 mapping, freshness boundaries, PIR state vs availability, evidence-based links, isolated failures, caching, query bounds/cleanup, additional devices, route preservation and the separate HTML page.
+The complete backend suite passes **131 tests**, including existing isolated PostgreSQL checks. Topology coverage includes JSON structure and aggregate status, FastAPI diagnostics, hub/ESP32 mapping, freshness boundaries, PIR state vs availability, evidence-based links, isolated failures, caching, query bounds/cleanup, additional devices, route preservation and the separate HTML page.
 
 `tests/check_topology_browser.py` uses intercepted local fixtures with optional Playwright/Chrome. It passes at 1920×1080, 1440×900, 1024×900, 1000×900, 900×900, 768×1024, 600×900, 390×844 and 320×844 in both themes, checking floating-node styling, neutral rounded SVG paths, hub/label/icon attachment points, panel placement and centered reflow, keyboard/focus, live detail updates, persistent nodes, motion/clear/zero values, reduced motion, expiry, partial/error/recovery/empty states, extra nodes in both protocol groups, long values, safe text, navigation, saved theme and map-only polling. `tests/check_motion_browser.py` also passes at four widths in both themes, including existing chart controls. Screenshots were visually reviewed at 1920×1080, 1440×900, 768×1024 and 390×844 with the drawer open/closed. Mobile protocol stacking and an overly tight first branch were corrected during verification. Fixtures are never published to MQTT or sent to Telegram; browser tooling is not a runtime dependency.
 

@@ -109,6 +109,11 @@ let systemPending = false;
 let systemRequestFailed = false;
 let motionPending = false;
 let motionSignature = null;
+let csiSnapshot = null;
+let csiReceivedAt = 0;
+let csiPending = false;
+let csiEventsSignature = null;
+let csiRequestFailed = false;
 const ONLINE_TIMEOUT_MS = 15000;
 const LATEST_REFRESH_MS = 5000;
 const HISTORY_REFRESH_MS = 10000;
@@ -117,6 +122,7 @@ const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const SYSTEM_STATUS_REFRESH_MS = 10000;
 const SYSTEM_REQUEST_TIMEOUT_MS = 8000;
 const MOTION_REFRESH_MS = 5000;
+const CSI_REFRESH_MS = 5000;
 const MOTION_REQUEST_TIMEOUT_MS = 4000;
 const SYSTEM_SERVICE_IDS = ['mqtt', 'database', 'internet', 'esp32', 'api', 'zigbee'];
 const SYSTEM_STATE_LABELS = {
@@ -230,6 +236,107 @@ function formatDateTime(value) {
   }) : '—';
 }
 
+function motionEventRow(event, motion) {
+  const row = document.createElement('li');
+  const time = document.createElement('time');
+  time.dateTime = event.recorded_at;
+  time.textContent = formatDateTime(event.recorded_at);
+  const label = document.createElement('span');
+  label.textContent = motion ? 'Motion detected' : 'Clear';
+  label.dataset.state = motion ? 'warning' : 'online';
+  const room = document.createElement('span');
+  room.textContent = event.room;
+  room.className = 'text-secondary';
+  row.append(time, label, room);
+  return row;
+}
+
+function updateCsiState() {
+  const data = csiSnapshot;
+  const elapsed = (performance.now() - csiReceivedAt) / 1000;
+  const expired = data?.status === 'live' && elapsed >= data.fresh_for_seconds;
+  const status = csiRequestFailed ? 'unavailable' : expired ? 'stale' : data?.status || 'waiting';
+  const live = status === 'live';
+  const phase = live ? data.state : null;
+  const labels = {
+    unavailable: ['API UNAVAILABLE', 'unknown'], mqtt_offline: ['MQTT OFFLINE', 'error'],
+    waiting: ['WAITING FOR REPORT', 'unknown'], stale: ['STALE', 'warning']
+  };
+  const phases = { settling: ['SETTLING', 'unknown'], calibrating: ['CALIBRATING', 'warning'], no_data: ['NO DATA', 'unknown'] };
+  const label = phase === 'ready' ? (data.motion ? ['MOTION DETECTED', 'warning'] : ['CLEAR', 'online']) : phases[phase] || labels[status] || labels.waiting;
+  setState('csi-state', ...label);
+  const descriptions = {
+    unavailable: 'CSI monitoring unavailable. Retrying automatically.',
+    mqtt_offline: 'The CSI feed is disconnected from MQTT.',
+    waiting: 'Waiting for a live ESP32 CSI report.',
+    stale: 'CSI reports have stopped. Current motion state is unknown.',
+    settling: 'Radio settling. Keep the room still.',
+    calibrating: 'Learning the quiet-room baseline. Keep the room still.',
+    no_data: 'Not enough usable CSI samples. Current motion state is unknown.',
+    ready: 'Live radio-channel motion estimate. Quiet does not establish absence.'
+  };
+  let description = descriptions[phase || status] || descriptions.waiting;
+  if (phase === 'ready' && data.filter) {
+    description = `Filtered CSI: requires ${data.filter.confirm_reports} consecutive strong reports; weak bursts are ignored.`;
+    if (!data.motion && data.filter.pending_reports > 0) description += ` Confirming ${data.filter.pending_reports}/${data.filter.confirm_reports}.`;
+  }
+  setText('csi-message', description);
+  const number = (value, digits = 0, unit = '') => {
+    const parsed = numberOrNull(value);
+    return parsed === null ? '—' : `${parsed.toFixed(digits)}${unit}`;
+  };
+  setText('csi-score', live ? number(data.score, 4) : '—');
+  const thresholds = data?.filter || data;
+  setText('csi-thresholds', phase === 'ready' ? `${number(thresholds.threshold_on, 4)} / ${number(thresholds.threshold_off, 4)}` : '—');
+  const rawMotion = phase === 'ready' ? data.raw_motion : null;
+  setState('csi-raw-state', rawMotion === true ? 'MOTION' : rawMotion === false ? 'CLEAR' : 'UNKNOWN', rawMotion === true ? 'warning' : 'unknown');
+  setText('csi-calibration', live ? `${number(data.calibration)} windows${phase === 'ready' ? ' · READY' : ''}` : '—');
+  setText('csi-samples', live ? number(data.samples) : '—');
+  setText('csi-rssi', live ? number(data.rssi, 0, ' dBm') : '—');
+  setState('csi-dropped', live ? number(data.dropped) : '—', live && data.dropped > 0 ? 'warning' : 'unknown');
+  setText('csi-seen', formatDateTime(data?.last_seen));
+  setText('csi-last-motion', formatDateTime(data?.last_motion_at));
+  byId('csi-last-motion').title = 'Latest confirmed Wi-Fi CSI detection; saved history survives restarts.';
+}
+
+async function loadCsi() {
+  if (csiPending) return;
+  csiPending = true;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MOTION_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch('/api/motion/csi', { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) throw new Error('CSI unavailable');
+    const data = await response.json();
+    if (!['live', 'waiting', 'stale', 'mqtt_offline'].includes(data.status) ||
+        (data.status === 'live' && (!['ready', 'settling', 'calibrating', 'no_data'].includes(data.state) ||
+         typeof data.fresh_for_seconds !== 'number' || !Number.isFinite(data.fresh_for_seconds) || data.fresh_for_seconds < 0 ||
+         (data.state === 'ready' && typeof data.motion !== 'boolean')))) throw new Error('Invalid CSI report');
+    if (!Array.isArray(data.events) || typeof data.history_available !== 'boolean' ||
+        data.events.some(event => !event || typeof event.motion !== 'boolean' || typeof event.id !== 'string' ||
+          typeof event.recorded_at !== 'string' || !Number.isFinite(new Date(event.recorded_at).getTime()))) throw new Error('Invalid CSI history');
+    const signature = JSON.stringify(data.events);
+    if (signature !== csiEventsSignature) {
+      byId('csi-events').replaceChildren(...data.events.map(event => motionEventRow(event, event.motion)));
+      csiEventsSignature = signature;
+    }
+    byId('csi-events-empty').hidden = data.history_available && data.events.length > 0;
+    setText('csi-events-empty', data.history_available ? 'No confirmed Wi-Fi CSI changes in the last 24 hours.' :
+      'CSI history temporarily unavailable. Recent events may be missing.');
+    csiSnapshot = data;
+    csiReceivedAt = performance.now();
+    csiRequestFailed = false;
+  } catch (_) {
+    csiRequestFailed = true;
+    byId('csi-events-empty').hidden = false;
+    setText('csi-events-empty', 'Could not refresh CSI history. Displayed events may be outdated.');
+  } finally {
+    clearTimeout(timer);
+    csiPending = false;
+    updateCsiState();
+  }
+}
+
 async function loadMotion() {
   if (motionPending) return;
   motionPending = true;
@@ -270,20 +377,7 @@ async function loadMotion() {
     setText('zigbee-seen', formatDateTime(sensor?.last_seen));
     const signature = JSON.stringify(data.events);
     if (signature !== motionSignature) {
-      const nodes = data.events.map(event => {
-        const row = document.createElement('li');
-        const time = document.createElement('time');
-        time.dateTime = event.recorded_at;
-        time.textContent = formatDateTime(event.recorded_at);
-        const label = document.createElement('span');
-        label.textContent = event.occupancy ? 'Motion detected' : 'Clear';
-        label.dataset.state = event.occupancy ? 'warning' : 'online';
-        const room = document.createElement('span');
-        room.textContent = event.room;
-        room.className = 'text-secondary';
-        row.append(time, label, room);
-        return row;
-      });
+      const nodes = data.events.map(event => motionEventRow(event, event.occupancy));
       byId('motion-events').replaceChildren(...nodes);
       motionSignature = signature;
     }
@@ -773,9 +867,11 @@ loadAnalytics();
 loadWeather();
 loadSystemStatus();
 loadMotion();
+loadCsi();
 const updateClock = () => {
   setText('local-clock', new Date().toLocaleTimeString());
   updateConnectionState();
+  updateCsiState();
 };
 setText('local-clock', new Date().toLocaleTimeString());
 // Preserve network cadence. The local clock also expires stale online status.
@@ -785,4 +881,5 @@ setInterval(loadAnalytics, ANALYTICS_REFRESH_MS);
 setInterval(loadWeather, WEATHER_REFRESH_MS);
 setInterval(loadSystemStatus, SYSTEM_STATUS_REFRESH_MS);
 setInterval(loadMotion, MOTION_REFRESH_MS);
+setInterval(loadCsi, CSI_REFRESH_MS);
 setInterval(updateClock, 1000);

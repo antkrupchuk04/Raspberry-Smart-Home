@@ -22,7 +22,7 @@ Developed for the Master's project:
 | Telegram notifications | Working | Formatted detection and cleared alerts, configurable display labels, persistent detection cooldown and asynchronous delivery |
 | Zigbee dashboard | Partial | Configured coordinator device presence and one integrated motion sensor; full network discovery and mapping remain planned |
 | Wi-Fi RSSI monitoring | Experimental; running | Standalone Linux script measures signal changes and writes to the systemd journal; separate from dashboard motion and Telegram |
-| Wi-Fi CSI | Planned | No CSI capture or motion classification implemented |
+| Wi-Fi CSI | Experimental; live | Filtered ESP32 CSI motion/clear state, raw device state, score, calibration, thresholds, sample count, RSSI and freshness in the Motion card; separate timestamped history of confirmed motion/clear transitions; no CSI Telegram alerts |
 | Camera, lighting and automation | Planned | Dashboard reserves space for modules; snapshot, network-map and automation controls are not operational |
 
 Indoor telemetry, storage, motion history and room analysis run locally. Outdoor weather requires Open-Meteo access, and Telegram delivery requires Internet access. There is no Home Assistant or cloud AI dependency.
@@ -47,7 +47,7 @@ flowchart LR
     API --> Dashboard["Vanilla HTML / CSS / JavaScript dashboard"]
 ```
 
-The collector groups separate temperature, pressure and humidity messages using a short batching window. Climate readings are stored in `sensor_readings`; motion uses `motion_sensor_state` and `motion_events`. Room analysis reads stored climate history through `room_analytics.py`.
+The collector groups separate temperature, pressure and humidity messages using a short batching window. Climate readings are stored in `sensor_readings`; Zigbee motion uses `motion_sensor_state` and `motion_events`. The API's independent CSI subscriber/filter records confirmed transitions through a queue worker in `csi_motion_events`. Room analysis reads stored climate history through `room_analytics.py`.
 
 ## Deployment and hardware
 
@@ -90,6 +90,7 @@ The interface preserves the engineering theme, typography and dark/light mode wi
 | Data | Refresh interval |
 | --- | --- |
 | Latest climate readings and PIR state/history | 5 seconds |
+| Live CSI state and diagnostics | 5 seconds |
 | Climate history and System Status | 10 seconds |
 | Smart Home Map | 10 seconds while `/topology` is visible; no map polling on the main dashboard |
 | Room analysis | 30 seconds |
@@ -98,6 +99,8 @@ The interface preserves the engineering theme, typography and dark/light mode wi
 Chart metric changes reuse fetched history. CSV export includes timestamps and all three climate metrics for the selected window. The visible 7D and 30D controls are disabled. See [dashboard architecture](DASHBOARD.md) for component structure, responsive behavior and expansion guidance.
 
 The map centers a prominent Pi computer icon above Wi-Fi/MQTT and Zigbee groups. Floating nodes use icon rings for selection and distinct keyboard focus; rounded neutral branches connect protocol labels to device icons. The canvas fills the available width and re-centers when the drawer opens. Nodes show their icon, name, room, health and active condition; readings appear only after selection. Click, tap, Enter or Space opens a right-side panel on desktop or a full-width panel below the map on mobile. Close or Escape returns focus to the device. The existing theme preference carries between pages, and old `/#topology` links redirect to `/topology`. Its backend returns extensible `nodes` and `links` arrays. It reuses the existing ESP32 freshness rule and system-health probes; a quiet PIR remains **Availability unknown**, with its last reported state and timestamp visible. Connection lines show communication relationships only; they stay neutral because telemetry freshness and broker reachability do not establish radio-link health. Device indicators and details retain the existing health and freshness information. This is a deployment map, not Zigbee mesh discovery.
+
+The Motion card also shows the ESP32's experimental CSI feed, refreshed independently every five seconds. A server-side filter requires three consecutive reports above 1.25× the firmware detection threshold before reporting motion; three quiet reports clear it. The original ESP32 motion state is displayed separately for comparison. FastAPI subscribes to its exact MQTT topic using the existing broker configuration and caches only the latest validated report. Values expire after five seconds without a live report; retained data is ignored. The panel distinguishes ready/motion/clear from settling, calibrating, no-data, stale and MQTT/API failures. Confirmed CSI detected/cleared transitions are saved separately in `csi_motion_events` and shown in their own latest-24-hours timeline. Last CSI detection falls back to saved history after restart. Short or weak real motion can also be suppressed by these conservative settings. CSI history begins when this integration is enabled. Raw repeats, calibration and data gaps do not create synthetic events. The Zigbee timeline and Telegram alerts remain separate.
 
 ## Motion and Telegram behavior
 
@@ -135,6 +138,7 @@ See [motion integration](MOTION.md) and [Telegram setup and delivery behavior](T
 | `GET /api/weather/current` | Cached outdoor weather with freshness information |
 | `GET /api/system/status` | Host metrics, service health, thresholds and aggregate status |
 | `GET /api/topology` | Aggregate system status, configured nodes, telemetry, diagnostics, communication links and isolated data-source status |
+| `GET /api/motion/csi?hours=24&limit=20` | Live filtered CSI report plus separately stored confirmed motion/clear events; hours 1–168, limit 1–100 |
 | `GET /api/motion?hours=24&limit=20` | Last PIR state, diagnostics, today's detections and recent events; `hours` 1–168, `limit` 1–100 |
 
 | MQTT topic | Payload |
@@ -144,6 +148,7 @@ See [motion integration](MOTION.md) and [Telegram setup and delivery behavior](T
 | `home/climate/room1/humidity` | Numeric relative humidity in % |
 | `zigbee2mqtt/0xa4c138657fddb903` | JSON occupancy, battery, battery-low flag, voltage, tamper and link quality |
 | `zigbee2mqtt/bridge/state` | Zigbee2MQTT bridge state |
+| `home/motion/room1/csi` | ESP32 CSI state/score/thresholds/calibration and radio diagnostics, approximately once per second |
 
 ESP32 online status uses the latest database reading: less than 15 seconds old means online. Climate APIs currently select across the readings table without room/device filtering, and the collector is configured for one climate device and one PIR.
 
@@ -160,6 +165,7 @@ The application services load `/home/anton/smarthome/.env` through systemd. [.en
 | `WEATHER_LAT`, `WEATHER_LON`, `WEATHER_LOCATION_NAME` | Outdoor weather location |
 | `MOTION_SENSOR_TOPIC`, `MOTION_SENSOR_ID`, `MOTION_SENSOR_NAME`, `MOTION_SENSOR_ROOM` | One configured PIR sensor |
 | `ZIGBEE_SERIAL_DEVICE` | Explicit coordinator path for host monitoring |
+| `CSI_MQTT_TOPIC`, `CSI_DEVICE_ID`, `CSI_ROOM` | CSI source and history room; defaults `home/motion/room1/csi`, `esp32-room1` and `Room 1` |
 | `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional private Telegram destination |
 | `TELEGRAM_COOLDOWN_SECONDS`, `TELEGRAM_SENSOR_LABEL`, `TELEGRAM_LOCATION_LABEL` | Alert throttling and display labels |
 
@@ -213,6 +219,8 @@ motion_service.py             Motion schema, validation, persistence and queries
 telegram_notifications.py     Message formatting, queue, cooldown and delivery
 system_status.py              Cached host and dependency probes
 topology_service.py            Device registry, topology model and cached read-only telemetry
+csi_service.py                 Live CSI filtering and confirmed event generation
+csi_history.py                 Queued PostgreSQL CSI history writer and bounded history queries
 room_analytics.py             Local environmental analysis
 weather_service.py            Cached Open-Meteo client
 wifi_motion_monitor.py        Experimental Wi-Fi RSSI signal-change detector
@@ -227,7 +235,7 @@ Detailed guides: [dashboard](DASHBOARD.md), [system monitoring](SYSTEM_STATUS.md
 
 ## Validation
 
-The full backend run on **30 September 2026** passed **99 tests**, including isolated PostgreSQL integration tests and topology status/failure/cache coverage. Real detection and clear notifications were previously confirmed in Telegram. The topology endpoint was also checked against the Pi's real database and health probes.
+The full backend run on **25 October 2026** passed **131 tests**, including isolated PostgreSQL integration tests, topology status/failure/cache coverage, and CSI parsing, sustained-score filtering, lifecycle, retained/duplicate-message rejection, stale-data handling, persistent event history and retry-safe writes. Real detection and clear notifications were previously confirmed in Telegram. The topology endpoint was also checked against the Pi's real database and health probes.
 
 ```bash
 cd ~/smarthome
@@ -258,7 +266,7 @@ Set `CHROME_PATH` to the Chrome/Chromium executable when it differs from the scr
 - Add room/device filtering and support additional ESP32 and Zigbee sensors.
 - Monitor Zigbee device availability and bridge health in the dashboard; add discovery and Zigbee mesh mapping beyond the configured-device topology.
 - Implement automation rules, smart lighting, notification schedules and camera snapshots.
-- Research actual Wi-Fi CSI sensing. The RSSI experiment detects signal fluctuations and cannot reliably establish human motion or presence.
+- Validate CSI detection accuracy in the room and add optional CSI notifications. Confirmed CSI history is now stored separately. The independent RSSI experiment cannot reliably establish human motion or presence.
 - Extend history beyond 24 hours with suitable aggregation and retention controls.
 - Package database migrations, service definitions and ESP32 firmware for reproducible installation.
 - Add backup/restore procedures, longer-term storage monitoring and controlled remote access.

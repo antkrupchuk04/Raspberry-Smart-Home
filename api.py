@@ -1,5 +1,6 @@
 import os
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse, JSONResponse
@@ -13,14 +14,28 @@ from weather_service import WeatherUnavailable, get_current_weather
 from system_status import SystemStatusMonitor
 from motion_service import MotionConfig, get_motion_status
 from topology_service import TopologyService
+from csi_service import CsiMonitor
+from csi_history import CsiEventStore
 
 
 LOGGER = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app):
+    csi_event_store.start()
+    try:
+        csi_monitor.start()
+        yield
+    finally:
+        csi_monitor.stop()
+        csi_event_store.stop()
+
+
 app = FastAPI(
     title="Smart Home API",
-    version="1.0"
+    version="1.0",
+    lifespan=lifespan
 )
 
 DB_CONFIG = {
@@ -38,6 +53,14 @@ system_monitor = SystemStatusMonitor(
     zigbee_device=os.getenv("ZIGBEE_SERIAL_DEVICE"),
 )
 motion_config = MotionConfig.from_env()
+csi_event_store = CsiEventStore(DB_CONFIG, room=os.getenv("CSI_ROOM", "Room 1"))
+csi_monitor = CsiMonitor(
+    host=os.getenv("MQTT_BROKER", "localhost"),
+    port=int(os.getenv("MQTT_PORT", "1883")),
+    topic=os.getenv("CSI_MQTT_TOPIC", "home/motion/room1/csi"),
+    device_id=os.getenv("CSI_DEVICE_ID", "esp32-room1"),
+    on_event=csi_event_store.submit,
+)
 topology_service = TopologyService(DB_CONFIG, system_monitor,
                                    motion_devices=({"id": "motion-room1", "config": motion_config},))
 
@@ -108,6 +131,16 @@ def get_motion(response: Response, hours: int = Query(default=24, ge=1, le=168),
     except psycopg2.Error:
         LOGGER.exception("Motion database query failed")
         raise HTTPException(status_code=503, detail="Motion monitoring is temporarily unavailable")
+
+
+@app.get("/api/motion/csi")
+def get_csi_status(hours: int = Query(default=24, ge=1, le=168),
+                   limit: int = Query(default=20, ge=1, le=100)):
+    history = csi_event_store.read(csi_monitor.device_id, hours, limit)
+    data = csi_monitor.snapshot()
+    if data["last_motion_at"] is None:
+        data["last_motion_at"] = history["history_last_motion_at"]
+    return JSONResponse({**data, **history}, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/topology")
