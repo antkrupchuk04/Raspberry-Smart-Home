@@ -4,7 +4,7 @@ The repository copy was compiled for `esp32:esp32:esp32` using the installed
 Arduino-ESP32 2.0.17 toolchain. A temporary build copy used blank credentials
 from `secrets.h.example`; no private credentials or build output are committed.
 
-- Full firmware compilation: passed, 779965 bytes flash (59%), 45492 bytes
+- Full firmware compilation: passed, 779961 bytes flash (59%), 45492 bytes
   static RAM (13%).
 - Host detector tests: passed with C++11, `-Wall -Wextra -Werror`, address
   sanitizer and undefined-behavior sanitizer. Covers calibration, motion,
@@ -12,14 +12,23 @@ from `secrets.h.example`; no private credentials or build output are committed.
 - Credential scan: original Wi-Fi SSID/password absent from added files;
   example Wi-Fi/MQTT credentials blank; private `secrets.h` excluded by Git.
 
+The OLED header stays within the fixed top 16-row yellow band; temperature,
+humidity, pressure and CSI text start at rows 18, 27, 36 and 45 in the blue band.
+A framebuffer preview using the installed Adafruit font confirmed no text
+clipping or overlaps.
+
 Public GPIO, MQTT topics and detector behavior are preserved from the Desktop
 source. Credential definitions moved out of `config.h` into a private header
 included only by `firmware.cpp`, so host detector tests need no credentials.
 
 The existing uploaded board has published real CSI reports to the Raspberry Pi.
-This repository copy has not been flashed as part of this change. Compilation
-and synthetic tests do not establish real-world detection accuracy or replace
-hardware checks of sensors, OLED, reconnection and calibration.
+The corrected configured Desktop sketch was compiled separately (780001 bytes
+flash, 45492 bytes static RAM) and uploaded to the connected ESP32-D0WD-V3 on
+31 October 2026. The upload verified flash hashes and reset the board. Private
+Wi-Fi settings were retained locally and are absent from the repository.
+The framebuffer preview verifies layout; physical screen appearance still
+requires visual confirmation. Compilation and synthetic tests do not establish
+real-world detection accuracy.
 
 Run the host tests from this directory:
 

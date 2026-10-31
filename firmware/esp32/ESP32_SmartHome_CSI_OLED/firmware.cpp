@@ -248,7 +248,7 @@ void showMessage(const char *line1, const char *line2) {
     if (!displayReady) return;
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE); display.setTextSize(1);
-    display.setCursor(0, 10); display.println(line1);
+    display.setCursor(0, 4); display.println(line1);
     display.setCursor(0, 26); display.println(line2);
     display.display();
 }
@@ -257,25 +257,27 @@ void updateDisplay() {
     if (!displayReady) return;
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE); display.setTextSize(1);
-    display.setCursor(0, 0); display.print("ESP32 SMART HOME");
-    display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
-    display.setCursor(0, 13); display.print("Temp: ");
+    // This two-color panel has a fixed yellow band at rows 0-15.
+    // Keep the header in that band and all sensor text below it.
+    display.setCursor(0, 4); display.print("ESP32 SMART HOME");
+    display.drawLine(0, 14, OLED_WIDTH - 1, 14, SSD1306_WHITE);
+    display.setCursor(0, 18); display.print("Temp: ");
     if (!std::isfinite(temperature)) display.print("ERROR");
     else { display.print(temperature, 1); display.print(" C"); }
-    display.setCursor(0, 23); display.print("Hum:  ");
+    display.setCursor(0, 27); display.print("Hum:  ");
     if (!std::isfinite(humidity)) display.print("ERROR");
     else { display.print(humidity, 1); display.print(" %"); }
-    display.setCursor(0, 33); display.print("Pres: ");
+    display.setCursor(0, 36); display.print("Pres: ");
     if (!std::isfinite(pressure)) display.print("ERROR");
     else { display.print(pressure, 1); display.print(" hPa"); }
-    display.setCursor(0, 43); display.print("CSI: ");
+    display.setCursor(0, 45); display.print("CSI: ");
     display.print(csiDisplayState());
     if (latest.state == Result::CALIBRATING &&
         latest.generation == generation.load() && csiUp) {
         display.print(" "); display.print(latest.calibrated);
         display.print("/"); display.print(CSI_CALIBRATION_WINDOWS);
     }
-    display.drawLine(0, 53, 127, 53, SSD1306_WHITE);
+    display.drawLine(0, 54, OLED_WIDTH - 1, 54, SSD1306_WHITE);
     display.setCursor(0, 56);
     display.print("WiFi:"); display.print(WiFi.status() == WL_CONNECTED ? "OK" : "--");
     display.print(" MQTT:"); display.print(mqtt.connected() ? "OK" : "--");
